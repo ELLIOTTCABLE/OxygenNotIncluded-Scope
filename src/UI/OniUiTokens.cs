@@ -38,6 +38,13 @@ namespace ScopeMod.UI {
       private static float?         _inputFontSize;
       private static Color?         _inputText;
       private static Color?         _inputPlaceholder;
+      private static Color?         _clearButtonBgColor;
+      private static Sprite         _clearButtonBgSprite;
+      private static Color?         _clearButtonFgColor;
+      private static Sprite         _clearButtonFgSprite;
+      private static Vector2?       _clearButtonFgInset;
+      private static Color?         _panelBgColor;
+      private static Sprite         _panelBgSprite;
 
       private static TMP_FontAsset  _sectionFont;
       private static float?         _sectionFontSize;
@@ -94,6 +101,13 @@ namespace ScopeMod.UI {
       public static float         InputFontSize       => _inputFontSize       ?? ScopeUiDefaults.InputFontSize;
       public static Color         InputText           => _inputText           ?? ScopeUiDefaults.InputText;
       public static Color         InputPlaceholder    => _inputPlaceholder    ?? ScopeUiDefaults.InputPlaceholder;
+      public static Color         ClearButtonBgColor  => _clearButtonBgColor  ?? ScopeUiDefaults.ClearButtonBgColor;
+      public static Sprite        ClearButtonBgSprite => _clearButtonBgSprite ?? ScopeUiDefaults.ClearButtonBgSprite;
+      public static Color         ClearButtonFgColor  => _clearButtonFgColor  ?? ScopeUiDefaults.ClearButtonFgColor;
+      public static Sprite        ClearButtonFgSprite => _clearButtonFgSprite ?? ScopeUiDefaults.ClearButtonFgSprite;
+      public static Vector2       ClearButtonFgInset  => _clearButtonFgInset  ?? ScopeUiDefaults.ClearButtonFgInset;
+      public static Color         PanelBgColor        => _panelBgColor        ?? ScopeUiDefaults.PanelBgColor;
+      public static Sprite        PanelBgSprite       => _panelBgSprite       ?? ScopeUiDefaults.PanelBgSprite;
 
       public static Color         BodyBg              => ScopeUiDefaults.BodyBg;
 
@@ -176,6 +190,13 @@ namespace ScopeMod.UI {
          if (bgs == null) {
             Debug.LogWarning("[Scope] BuildingGroupScreen.Instance is null at extraction time; using fallbacks.");
          } else {
+            TryExtract("BGPanel", () => {
+               var bgPanel = bgs.transform.Find("BGPanel")?.GetComponent<Image>();
+               if (bgPanel == null) return;
+               _panelBgColor = bgPanel.color;
+               if (bgPanel.sprite != null) _panelBgSprite = bgPanel.sprite;
+            });
+
             TryExtract("TitleBar", () => {
                var titleBar = bgs.transform.Find("TitleBar");
                if (titleBar == null) return;
@@ -213,6 +234,20 @@ namespace ScopeMod.UI {
                   _inputFont     = txt.font;
                   _inputFontSize = txt.fontSize;
                   _inputText     = txt.color;
+               }
+
+               var clearButton = sb.Find("ClearSearchButton");
+               var clearBg = clearButton?.Find("BG")?.GetComponent<Image>();
+               if (clearBg != null) {
+                  _clearButtonBgColor = clearBg.color;
+                  if (clearBg.sprite != null) _clearButtonBgSprite = clearBg.sprite;
+               }
+
+               var clearFg = clearButton?.Find("FG")?.GetComponent<Image>();
+               if (clearFg != null) {
+                  _clearButtonFgColor = clearFg.color;
+                  if (clearFg.sprite != null) _clearButtonFgSprite = clearFg.sprite;
+                  if (clearFg.transform is RectTransform clearFgRT) _clearButtonFgInset = clearFgRT.sizeDelta;
                }
             });
 
@@ -387,6 +422,13 @@ namespace ScopeMod.UI {
          LogFloat (sb, "InputFontSize",       _inputFontSize.HasValue,       InputFontSize);
          LogColor (sb, "InputText",           _inputText.HasValue,           InputText);
          LogColor (sb, "InputPlaceholder",    _inputPlaceholder.HasValue,    InputPlaceholder);
+         LogColor (sb, "ClearButtonBgColor",  _clearButtonBgColor.HasValue,  ClearButtonBgColor);
+         LogSprite(sb, "ClearButtonBgSprite", _clearButtonBgSprite != null,  ClearButtonBgSprite);
+         LogColor (sb, "ClearButtonFgColor",  _clearButtonFgColor.HasValue,  ClearButtonFgColor);
+         LogSprite(sb, "ClearButtonFgSprite", _clearButtonFgSprite != null,  ClearButtonFgSprite);
+         LogVec2  (sb, "ClearButtonFgInset",  _clearButtonFgInset.HasValue,  ClearButtonFgInset);
+         LogColor (sb, "PanelBgColor",        _panelBgColor.HasValue,        PanelBgColor);
+         LogSprite(sb, "PanelBgSprite",       _panelBgSprite != null,        PanelBgSprite);
 
          LogColor (sb, "BodyBg",              false,                         BodyBg);
 

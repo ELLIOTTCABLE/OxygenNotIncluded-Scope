@@ -18,6 +18,8 @@ namespace ScopeMod {
 
         private TMP_InputField           inputField;
         private RectTransform            sectionsContent;
+        private GameObject               emptyState;
+        private bool                     suppressEndEditHandling;
         private readonly List<SectionWidget> sections = new List<SectionWidget>(32);
         private readonly List<RowWidget>     visibleRows = new List<RowWidget>(MAX_RESULTS);
         private readonly Dictionary<string, bool> expandedSections =
@@ -36,7 +38,10 @@ namespace ScopeMod {
         public override bool IsModal() => false;  // explicit: do NOT pause game
 
         public static void Open() {
-            if (liveInstance != null) return;
+            if (liveInstance != null) {
+                liveInstance.FocusInput();
+                return;
+            }
             var parent = GameScreenManager.Instance.GetParent(
                 GameScreenManager.UIRenderTarget.ScreenSpaceOverlay);
             // GraphicRaycaster is required alongside the Canvas — without it,
@@ -71,8 +76,7 @@ namespace ScopeMod {
             rt.anchoredPosition = Vector2.zero;
 
             inputField.text = "";
-            inputField.Select();
-            inputField.ActivateInputField();
+            FocusInput();
             highlighted = 0;
             nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
             RefreshActionsAndResults(keepHighlight: false);
@@ -87,8 +91,13 @@ namespace ScopeMod {
         // (e.g. 'c' → cancel-tool) while the overlay is open. PLib's PTextFieldEvents at
         // sort 99 already does this while the field is focused, but we cover the gap when
         // the field momentarily isn't.
-        public override void OnKeyDown(KButtonEvent e) { e.Consumed = true; }
-        public override void OnKeyUp(KButtonEvent e)   { e.Consumed = true; }
+        public override void OnKeyDown(KButtonEvent e) {
+            if (IsInputFocused) e.Consumed = true;
+        }
+
+        public override void OnKeyUp(KButtonEvent e) {
+            if (IsInputFocused) e.Consumed = true;
+        }
 
         // Navigation / dismiss runs in Update() rather than OnKey* because PTextFieldEvents
         // at sort 99 consumes all Klei key events while the field is focused — our sort-60
@@ -103,12 +112,10 @@ namespace ScopeMod {
                 Deactivate();
                 return;
             }
-            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) {
-                Submit();
-                return;
+            if (IsInputFocused) {
+                if (Input.GetKeyDown(KeyCode.UpArrow))   { Highlight(highlighted - 1); return; }
+                if (Input.GetKeyDown(KeyCode.DownArrow)) { Highlight(highlighted + 1); return; }
             }
-            if (Input.GetKeyDown(KeyCode.UpArrow))   { Highlight(highlighted - 1); return; }
-            if (Input.GetKeyDown(KeyCode.DownArrow)) { Highlight(highlighted + 1); return; }
 
             // Click outside the panel dismisses. The panel itself catches its own
             // clicks via Image.raycastTarget, so this only fires when the cursor is over
@@ -118,14 +125,19 @@ namespace ScopeMod {
                 if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
                         rt, Input.mousePosition, /* camera */ null, out var local)
                     && !rt.rect.Contains(local)) {
-                    Deactivate();
+                    if (IsInputFocused) {
+                        ReleaseInputFocus();
+                    } else {
+                        Deactivate();
+                    }
+                    return;
                 }
             }
         }
 
         private void Submit() {
             if (visibleRows.Count == 0) {
-                Deactivate();
+                ReleaseInputFocus();
                 return;
             }
 
@@ -185,9 +197,9 @@ namespace ScopeMod {
             OniUiTokens.EnsureExtracted();
 
             var border = gameObject.AddComponent<Image>();
-            border.sprite = PUITuning.Images.BoxBorderWhite;
+            border.sprite = OniUiTokens.PanelBgSprite ?? PUITuning.Images.BoxBorder;
             border.type = Image.Type.Sliced;
-            border.color = OniUiTokens.HeaderBg;
+            border.color = OniUiTokens.PanelBgColor;
             border.raycastTarget = true;
 
             var bodyGo = new GameObject("Body", typeof(RectTransform));
@@ -195,8 +207,8 @@ namespace ScopeMod {
             var bodyRT = (RectTransform)bodyGo.transform;
             bodyRT.anchorMin = Vector2.zero;
             bodyRT.anchorMax = Vector2.one;
-            bodyRT.offsetMin = new Vector2(2f, 2f);
-            bodyRT.offsetMax = new Vector2(-2f, -2f);
+            bodyRT.offsetMin = new Vector2(1f, 1f);
+            bodyRT.offsetMax = new Vector2(-1f, -1f);
             var bodyBg = bodyGo.AddComponent<Image>();
             bodyBg.color = Color.white;
 
@@ -278,6 +290,8 @@ namespace ScopeMod {
             if (border != null) border.color = Color.white;
 
             inputField = fieldGo.GetComponent<TMP_InputField>();
+            inputField.onSelect.AddListener(_ => HandleInputSelect());
+            inputField.onEndEdit.AddListener(HandleInputEndEdit);
 
             // Live filtering: PTextField's OnTextChanged delegate only fires on EndEdit
             // (Enter / blur). Wire onValueChanged directly for keystroke-by-keystroke
@@ -312,29 +326,46 @@ namespace ScopeMod {
             clearLE.minHeight = clearLE.preferredHeight = OniUiTokens.InputHeight;
 
             var clearBg = clearGo.GetComponent<Image>();
-            clearBg.color = Color.white;
+            clearBg.color = OniUiTokens.ClearButtonBgColor;
+            if (OniUiTokens.ClearButtonBgSprite != null) {
+                clearBg.sprite = OniUiTokens.ClearButtonBgSprite;
+                clearBg.type = Image.Type.Sliced;
+            }
 
             var clearButton = clearGo.GetComponent<Button>();
+            clearButton.targetGraphic = clearBg;
             clearButton.onClick.AddListener(() => {
                 inputField.text = "";
-                inputField.Select();
-                inputField.ActivateInputField();
+                FocusInput();
             });
 
-            var labelGo = new GameObject("Label", typeof(RectTransform));
-            labelGo.transform.SetParent(clearGo.transform, worldPositionStays: false);
-            var label = labelGo.AddComponent<TextMeshProUGUI>();
-            label.font = PUITuning.Fonts.TextDarkStyle.sdfFont;
-            label.fontSize = 16f;
-            label.color = Color.black;
-            label.alignment = TextAlignmentOptions.Center;
-            label.text = "X";
+            var fgGo = new GameObject("FG", typeof(RectTransform), typeof(Image));
+            fgGo.transform.SetParent(clearGo.transform, worldPositionStays: false);
+            var fgImage = fgGo.GetComponent<Image>();
+            fgImage.raycastTarget = false;
+            fgImage.color = OniUiTokens.ClearButtonFgColor;
+            fgImage.sprite = OniUiTokens.ClearButtonFgSprite;
+            fgImage.preserveAspect = true;
 
-            var lrt = (RectTransform)labelGo.transform;
+            var lrt = (RectTransform)fgGo.transform;
             lrt.anchorMin = Vector2.zero;
             lrt.anchorMax = Vector2.one;
-            lrt.offsetMin = Vector2.zero;
-            lrt.offsetMax = Vector2.zero;
+            var fgPadding = new Vector2(
+                Mathf.Abs(OniUiTokens.ClearButtonFgInset.x) * 0.5f,
+                Mathf.Abs(OniUiTokens.ClearButtonFgInset.y) * 0.5f);
+            lrt.offsetMin = fgPadding;
+            lrt.offsetMax = -fgPadding;
+
+            if (fgImage.sprite == null) {
+                UnityEngine.Object.Destroy(fgImage);
+
+                var label = fgGo.AddComponent<TextMeshProUGUI>();
+                label.font = OniUiTokens.InputFont;
+                label.fontSize = 16f;
+                label.color = OniUiTokens.InputText;
+                label.alignment = TextAlignmentOptions.Center;
+                label.text = "X";
+            }
         }
 
         private void BuildBody(Transform parent) {
@@ -357,6 +388,22 @@ namespace ScopeMod {
             vrt.offsetMax = new Vector2(-14f, 0f);
             viewport.GetComponent<Image>().color = Color.white;
             viewport.GetComponent<Mask>().showMaskGraphic = false;
+
+            emptyState = new GameObject("EmptyState", typeof(RectTransform), typeof(TextMeshProUGUI));
+            emptyState.transform.SetParent(viewport.transform, worldPositionStays: false);
+            var emptyRT = (RectTransform)emptyState.transform;
+            emptyRT.anchorMin = Vector2.zero;
+            emptyRT.anchorMax = Vector2.one;
+            emptyRT.offsetMin = new Vector2(16f, 16f);
+            emptyRT.offsetMax = new Vector2(-16f, -16f);
+            var emptyLabel = emptyState.GetComponent<TextMeshProUGUI>();
+            emptyLabel.raycastTarget = false;
+            emptyLabel.font = OniUiTokens.InputFont;
+            emptyLabel.fontSize = OniUiTokens.InputFontSize;
+            emptyLabel.color = new Color32(96, 102, 117, 150);
+            emptyLabel.alignment = TextAlignmentOptions.Center;
+            emptyLabel.text = "No results";
+            emptyState.SetActive(false);
 
             var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
             content.transform.SetParent(viewport.transform, worldPositionStays: false);
@@ -428,7 +475,7 @@ namespace ScopeMod {
             scrollRect.elasticity        = OniUiTokens.ScrollElasticity;
             scrollRect.inertia           = OniUiTokens.ScrollInertia;
             scrollRect.decelerationRate  = OniUiTokens.ScrollDecelerationRate;
-            scrollRect.scrollSensitivity = OniUiTokens.ScrollSensitivity;
+            scrollRect.scrollSensitivity = Mathf.Max(OniUiTokens.ScrollSensitivity, OniUiTokens.RowHeight);
         }
 
         private void RebuildSections() {
@@ -480,9 +527,46 @@ namespace ScopeMod {
                 sections.Add(section);
             }
 
+            if (emptyState != null) emptyState.SetActive(currentResults.Count == 0);
+
             RefreshVisibleRows();
             Highlight(0);
         }
+
+        private void FocusInput() {
+            if (inputField == null) return;
+            inputField.Select();
+            inputField.ActivateInputField();
+        }
+
+        private void ReleaseInputFocus() {
+            if (inputField == null) return;
+
+            suppressEndEditHandling = true;
+            try {
+                inputField.DeactivateInputField();
+            } finally {
+                suppressEndEditHandling = false;
+            }
+        }
+
+        private void HandleInputSelect() {
+            KScreenManager.Instance?.RefreshStack();
+        }
+
+        private void HandleInputEndEdit(string _) {
+            if (suppressEndEditHandling) return;
+
+            bool submitted = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+            if (submitted) {
+                Submit();
+                return;
+            }
+
+            KScreenManager.Instance?.RefreshStack();
+        }
+
+        private bool IsInputFocused => inputField != null && inputField.isFocused;
 
         private bool IsSectionExpanded(string key) {
             if (expandedSections.TryGetValue(key, out var expanded)) return expanded;

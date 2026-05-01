@@ -26,6 +26,15 @@ namespace ScopeMod.UI {
       public static readonly Color  InputText        = Color.black;
       public static readonly Color  InputPlaceholder = new Color32(  0,   0,   0, 204);
 
+      public static readonly Color  ClearButtonBgColor = new Color32( 62,  67,  87, 255);
+      public static readonly Sprite ClearButtonBgSprite = null;  // sprite=web_button
+      public static readonly Color  ClearButtonFgColor = Color.white;
+      public static readonly Sprite ClearButtonFgSprite = null;  // sprite=cancel
+      public static readonly Vector2 ClearButtonFgInset = new Vector2(-8f, -8f);
+
+      public static readonly Color  PanelBgColor = Color.white;
+      public static readonly Sprite PanelBgSprite = null;  // sprite=web_box
+
       public static readonly Color  BodyBg = Color.white;
 
       // Section header — [BarLeft][Arrow][Label][BarRight]. Sprites null
@@ -68,7 +77,7 @@ namespace ScopeMod.UI {
       public static readonly Vector2 ScrollbarHandleInset   = new Vector2(-4f, -8f);
 
       public static readonly float ScrollElasticity       = 0.2f;
-      public static readonly float ScrollSensitivity      = 1f;
+      public static readonly float ScrollSensitivity      = 36f;
       public static readonly float ScrollDecelerationRate = 0.02f;
       public static readonly bool  ScrollInertia          = true;
    }
