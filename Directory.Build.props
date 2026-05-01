@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!-- Default paths always load; user file (if present) layers on top to
+       override individual properties (e.g. WSL-style /mnt/... paths,
+       conditional on [MSBuild]::IsOSPlatform('Linux')). -->
+  <Import                                                     Project="Directory.Build.props.default" />
+  <Import Condition=" Exists('Directory.Build.props.user') "  Project="Directory.Build.props.user" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <APIVersion>2</APIVersion>
+    <SupportedContent>VANILLA_ID,EXPANSION1_ID</SupportedContent>
+    <LastWorkingBuild>675080</LastWorkingBuild>
+    <StaticID>io.ell.OxygenNotIncluded.ScopeMod</StaticID>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <Reference><Private>False</Private></Reference>
+    <PackageReference><Private>False</Private></PackageReference>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Krafs.Publicizer" Version="2.3.0">
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <Publicize Include="Assembly-CSharp;Assembly-CSharp-firstpass" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp"           HintPath="$(GameFolder)\Assembly-CSharp.dll" />
+    <Reference Include="Assembly-CSharp-firstpass" HintPath="$(GameFolder)\Assembly-CSharp-firstpass.dll" />
+    <Reference Include="UnityEngine"               HintPath="$(GameFolder)\UnityEngine.dll" />
+    <Reference Include="UnityEngine.CoreModule"    HintPath="$(GameFolder)\UnityEngine.CoreModule.dll" />
+    <Reference Include="UnityEngine.UI"            HintPath="$(GameFolder)\UnityEngine.UI.dll" />
+    <Reference Include="UnityEngine.UIModule"      HintPath="$(GameFolder)\UnityEngine.UIModule.dll" />
+    <Reference Include="UnityEngine.IMGUIModule"   HintPath="$(GameFolder)\UnityEngine.IMGUIModule.dll" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(GameFolder)\UnityEngine.TextRenderingModule.dll" />
+    <Reference Include="UnityEngine.InputLegacyModule"   HintPath="$(GameFolder)\UnityEngine.InputLegacyModule.dll" />
+    <Reference Include="Unity.TextMeshPro"         HintPath="$(GameFolder)\Unity.TextMeshPro.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony.Ref" Version="2.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PLib" Version="*" Private="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.40">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+bin/
+obj/
+*.suo
+*.user
+.vs/
+.idea/
+Directory.Build.props.user
+*.pdb
+*.swp
+.DS_Store

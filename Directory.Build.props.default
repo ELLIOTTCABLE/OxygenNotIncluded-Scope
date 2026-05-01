@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default Steam/ONI/Documents paths. Windows users with default-library Steam installs
+  typically don't need to override — the registry lookup below finds the install location
+  even when Steam itself is on a non-system drive.
+
+  Contributors whose ONI install isn't found this way (Steam library on a non-default
+  drive, WSL, macOS, etc.) create Directory.Build.props.user (gitignored) with overrides:
+
+      <Project>
+        <PropertyGroup>
+          <GameFolder>D:\SteamLibrary\steamapps\common\OxygenNotIncluded\OxygenNotIncluded_Data\Managed</GameFolder>
+          <ModFolder>C:\Users\you\Documents\Klei\OxygenNotIncluded\mods\dev</ModFolder>
+        </PropertyGroup>
+      </Project>
+-->
+<Project>
+  <PropertyGroup>
+    <GameFolderRegistry>$(registry:HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App 457140@InstallLocation)</GameFolderRegistry>
+    <DocumentsFolderRegistry>$(registry:HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders@Personal)</DocumentsFolderRegistry>
+
+    <GameFolderDefault>C:\Program Files (x86)\Steam\steamapps\common\OxygenNotIncluded</GameFolderDefault>
+    <DocumentsFolderDefault>$(UserProfile)\Documents</DocumentsFolderDefault>
+
+    <AssemblyFolder>OxygenNotIncluded_Data\Managed</AssemblyFolder>
+    <DevModsFolder>Klei\OxygenNotIncluded\mods\dev</DevModsFolder>
+
+    <GameFolder>$(GameFolderDefault)\$(AssemblyFolder)</GameFolder>
+    <ModFolder>$(DocumentsFolderDefault)\$(DevModsFolder)</ModFolder>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(GameFolderRegistry)' != '' ">
+    <GameFolder>$(GameFolderRegistry)\$(AssemblyFolder)</GameFolder>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(DocumentsFolderRegistry)' != '' ">
+    <ModFolder>$(DocumentsFolderRegistry)\$(DevModsFolder)</ModFolder>
+  </PropertyGroup>
+</Project>

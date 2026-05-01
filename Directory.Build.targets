@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <Target Name="ClearGameFolderCopyLocal" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="$(GameFolder)\*" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="WriteModInfoFile" BeforeTargets="PreBuildEvent">
+    <PropertyGroup>
+      <ModInfoFile>$(IntermediateOutputPath)\mod_info.yaml</ModInfoFile>
+    </PropertyGroup>
+    <ItemGroup>
+      <ModInfoLines Include="APIVersion: $(APIVersion)" />
+      <ModInfoLines Include="supportedContent: $(SupportedContent)" />
+      <ModInfoLines Include="minimumSupportedBuild: $(LastWorkingBuild)" />
+      <ModInfoLines Include="version: &quot;$(Version)&quot;" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(ModInfoFile)" Overwrite="true" Lines="@(ModInfoLines)" />
+  </Target>
+
+  <Target Name="WriteModDescriptionFile" BeforeTargets="PreBuildEvent">
+    <PropertyGroup>
+      <ModFile>$(IntermediateOutputPath)\mod.yaml</ModFile>
+      <_DisplayTitle Condition=" '$(Configuration)' == 'Debug' ">DEV: $(Title)</_DisplayTitle>
+      <_DisplayTitle Condition=" '$(Configuration)' != 'Debug' ">$(Title)</_DisplayTitle>
+    </PropertyGroup>
+    <ItemGroup>
+      <ModLines Include="title: &quot;$(_DisplayTitle)&quot;" />
+      <ModLines Include="description: &quot;$(Description)&quot;" />
+      <ModLines Include="staticID: $(StaticID)" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(ModFile)" Overwrite="true" Lines="@(ModLines)" />
+  </Target>
+
+  <!-- NOTE: do NOT pass Internalize="true" — would break PLib's reflection-based
+       [PLibMethod] discovery and version-forwarding. -->
+  <Target Name="ILRepackMerge" AfterTargets="Build">
+    <ItemGroup>
+      <_MergeInputs Include="$(TargetPath)" />
+      <_MergeInputs Include="$(TargetDir)PLib*.dll" />
+    </ItemGroup>
+    <ILRepack
+        TargetKind="SameAsPrimaryAssembly"
+        OutputFile="$(TargetPath)"
+        InputAssemblies="@(_MergeInputs)"
+        Wildcards="true"
+        LibraryPath="$(GameFolder)" />
+  </Target>
+
+  <Target Name="CopyArtifactsToInstallFolder" AfterTargets="ILRepackMerge">
+    <PropertyGroup>
+      <InstallFolder Condition=" '$(Configuration)' == 'Debug' ">$(ModFolder)\ScopeMod</InstallFolder>
+      <InstallFolder Condition=" '$(Configuration)' == 'Release' ">$(MSBuildThisFileDirectory)Release\ScopeMod</InstallFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(InstallFolder)" />
+    <Copy SourceFiles="$(TargetPath)"  DestinationFolder="$(InstallFolder)" />
+    <Copy SourceFiles="$(ModInfoFile)" DestinationFolder="$(InstallFolder)" />
+    <Copy SourceFiles="$(ModFile)"     DestinationFolder="$(InstallFolder)" />
+  </Target>
+</Project>
