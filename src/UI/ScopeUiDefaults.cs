@@ -46,12 +46,18 @@ namespace ScopeMod.UI {
       public static readonly float  RowHeight     = 36f;
       public static readonly Color  RowBgNormal   = new Color32( 62,  67,  87, 255);  // sprite=web_button
       public static readonly Color  RowBgHover    = new Color32( 80,  86, 112, 255);  // until states[0].color_on_hover lands
+      public static readonly Color  RowBgDisabled = new Color32( 62,  67,  87, 255);
+      public static readonly Color  RowBgDisabledHover = new Color32( 80,  86, 112, 255);
       public static readonly Sprite RowBgSprite   = null;
       public static          TMP_FontAsset RowFont => PUITuning.Fonts.TextLightStyle.sdfFont;
       public static readonly float  RowFontSize   = 16f;
       public static readonly Color  RowText       = Color.white;
       public static readonly float  RowIconSize   = 24f;
       public static readonly Material RowIconMaterial = null;
+      public static readonly Material RowIconDisabledMaterial = null;
+      public static readonly Sprite RowNeedsTechSprite = null;
+      public static readonly Color  RowNeedsTechColor = Color.white;
+      public static readonly Vector2 RowNeedsTechSize = new Vector2(16f, 16f);
 
       // Scrollbar — Klei's Viewport/Scrollbar.
       public static readonly float   ScrollbarWidth         = 8f;

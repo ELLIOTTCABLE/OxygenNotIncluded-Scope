@@ -12,6 +12,7 @@ namespace ScopeMod {
         private const int   MAX_RESULTS      = 120;
         private const float PANEL_WIDTH      = 520f;
         private const float PANEL_HEIGHT     = 560f;
+        private const float STATE_REFRESH_INTERVAL_SECONDS = 0.25f;
 
         private static ScopeOverlay liveInstance;
 
@@ -25,6 +26,7 @@ namespace ScopeMod {
         private List<RankedResult> currentResults = new List<RankedResult>(MAX_RESULTS);
         private int                      highlighted;
         private List<IQuickAction>       allActions;
+        private float                    nextStateRefreshAt;
 
         // Sort key 60 sits above EDITING_SCREEN (50) and below MODAL (100). Receives input
         // before BuildingGroupScreen's KInputTextField (sort 0) per KScreenManager's
@@ -62,12 +64,6 @@ namespace ScopeMod {
         public override void OnActivate() {
             base.OnActivate();
 
-            // Populate action list lazily on each open. Cheap (~250 BuildingDefs) and lets
-            // the visible set track the current sandbox/research/DLC state without staleness.
-            allActions = new List<IQuickAction>(256);
-            foreach (var provider in ScopeProviders.All)
-                foreach (var action in provider.Enumerate()) allActions.Add(action);
-
             var rt = (RectTransform)transform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot     = new Vector2(0.5f, 0.5f);
@@ -78,7 +74,8 @@ namespace ScopeMod {
             inputField.Select();
             inputField.ActivateInputField();
             highlighted = 0;
-            UpdateResults("");
+            nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
+            RefreshActionsAndResults(keepHighlight: false);
         }
 
         public override void OnDeactivate() {
@@ -97,6 +94,11 @@ namespace ScopeMod {
         // at sort 99 consumes all Klei key events while the field is focused — our sort-60
         // OnKeyDown/Up never fires for typed keys. Unity's Input polling sees keys regardless.
         public void Update() {
+            if (Time.unscaledTime >= nextStateRefreshAt) {
+                nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
+                RefreshActionsAndResults(keepHighlight: true);
+            }
+
             if (Input.GetKeyDown(KeyCode.Escape)) {
                 Deactivate();
                 return;
@@ -148,6 +150,19 @@ namespace ScopeMod {
         private void UpdateResults(string query) {
             currentResults = ScopeSearch.Rank(query, allActions, MAX_RESULTS);
             RebuildSections();
+        }
+
+        private void RefreshActionsAndResults(bool keepHighlight) {
+            int previousHighlight = highlighted;
+
+            // Re-enumerate from providers so RequirementsState tracks vanilla's live cache
+            // while the overlay is open (materials/research/world-state can change mid-session).
+            allActions = new List<IQuickAction>(256);
+            foreach (var provider in ScopeProviders.All)
+                foreach (var action in provider.Enumerate()) allActions.Add(action);
+
+            UpdateResults(inputField != null ? inputField.text : "");
+            if (keepHighlight) Highlight(previousHighlight);
         }
 
         private void Highlight(int idx) {
@@ -429,12 +444,24 @@ namespace ScopeMod {
 
             for (int i = 0; i < currentResults.Count; i++) {
                 var action = currentResults[i].Action;
-                var key = string.IsNullOrEmpty(action.SubcategoryKey) ? "default" : action.SubcategoryKey;
+                var baseKey = string.IsNullOrEmpty(action.SubcategoryKey) ? "default" : action.SubcategoryKey;
+                var baseTitle = string.IsNullOrEmpty(action.SubcategoryTitle) ? baseKey : action.SubcategoryTitle;
+
+                string key = baseKey;
+                string title = baseTitle;
+                if (action.SearchDemotionTier > 0) {
+                    var suffix = string.IsNullOrEmpty(action.SearchDemotionSuffix)
+                        ? "demoted"
+                        : action.SearchDemotionSuffix;
+                    key = baseKey + "__demoted__" + action.SearchDemotionTier + "__" + suffix;
+                    title = baseTitle + " (" + suffix + ")";
+                }
+
                 if (!grouped.TryGetValue(key, out var bucket)) {
                     bucket = new List<IQuickAction>(16);
                     grouped[key] = bucket;
                     order.Add(key);
-                    titles[key] = string.IsNullOrEmpty(action.SubcategoryTitle) ? key : action.SubcategoryTitle;
+                    titles[key] = title;
                 }
                 bucket.Add(action);
             }
@@ -657,7 +684,9 @@ namespace ScopeMod {
             private readonly GameObject root;
             private readonly Image background;
             private readonly Image icon;
+            private readonly Image techBadge;
             private readonly TextMeshProUGUI label;
+            private readonly bool isAvailable;
             public IQuickAction Action { get; }
 
             public static RowWidget Create(Transform parent, IQuickAction action, Action<IQuickAction> onClick) {
@@ -667,10 +696,11 @@ namespace ScopeMod {
                 le.minHeight = le.preferredHeight = OniUiTokens.RowHeight;
 
                 var bg = go.GetComponent<Image>();
-                bg.color = OniUiTokens.RowBgNormal;
                 bg.raycastTarget = true;
-                if (OniUiTokens.RowBgSprite != null) {
-                    bg.sprite = OniUiTokens.RowBgSprite;
+                bool isAvailable = action.IsCurrentlyAvailable;
+                var rowSprite = isAvailable ? OniUiTokens.RowBgSprite : OniUiTokens.RowBgDisabledSprite;
+                if (rowSprite != null) {
+                    bg.sprite = rowSprite;
                     bg.type   = Image.Type.Sliced;  // web_button is 9-sliced
                 }
 
@@ -687,7 +717,24 @@ namespace ScopeMod {
                 iconRT.anchoredPosition = new Vector2(8f, 0f);
                 var icon = iconGo.AddComponent<Image>();
                 icon.preserveAspect = true;
-                if (OniUiTokens.RowIconMaterial != null) icon.material = OniUiTokens.RowIconMaterial;
+                var iconMat = isAvailable ? OniUiTokens.RowIconMaterial : OniUiTokens.RowIconDisabledMaterial;
+                if (iconMat != null) icon.material = iconMat;
+
+                var badgeGo = new GameObject("NeedTech", typeof(RectTransform));
+                badgeGo.transform.SetParent(iconGo.transform, worldPositionStays: false);
+                var badgeRT = (RectTransform)badgeGo.transform;
+                badgeRT.anchorMin = new Vector2(0f, 1f);
+                badgeRT.anchorMax = new Vector2(0f, 1f);
+                badgeRT.pivot = new Vector2(0f, 1f);
+                badgeRT.sizeDelta = OniUiTokens.RowNeedsTechSize;
+                badgeRT.anchoredPosition = Vector2.zero;
+                var techBadge = badgeGo.AddComponent<Image>();
+                techBadge.raycastTarget = false;
+                techBadge.sprite = OniUiTokens.RowNeedsTechSprite;
+                techBadge.color = OniUiTokens.RowNeedsTechColor;
+                techBadge.enabled = action is BuildingSelectAction buildingAction
+                    && buildingAction.RequirementsState == PlanScreen.RequirementsState.Tech
+                    && OniUiTokens.RowNeedsTechSprite != null;
 
                 var labelGo = new GameObject("Label", typeof(RectTransform));
                 labelGo.transform.SetParent(go.transform, worldPositionStays: false);
@@ -706,21 +753,28 @@ namespace ScopeMod {
                 icon.sprite = action.Sprite;
                 icon.enabled = action.Sprite != null;
 
-                var row = new RowWidget(go, bg, icon, label, action);
+                var row = new RowWidget(go, bg, icon, techBadge, label, action, isAvailable);
                 button.onClick.AddListener(() => onClick(row.Action));
+                row.SetHighlighted(false);
 
                 return row;
             }
 
-            private RowWidget(GameObject g, Image bg, Image ic, TextMeshProUGUI lbl, IQuickAction action) {
+            private RowWidget(GameObject g, Image bg, Image ic, Image tech, TextMeshProUGUI lbl, IQuickAction action, bool isAvailable) {
                 root = g;
                 background = bg;
                 icon = ic;
+                techBadge = tech;
                 label = lbl;
                 Action = action;
+                this.isAvailable = isAvailable;
             }
 
-            public void SetHighlighted(bool on) => background.color = on ? OniUiTokens.RowBgHover : OniUiTokens.RowBgNormal;
+            public void SetHighlighted(bool on) {
+                background.color = isAvailable
+                    ? (on ? OniUiTokens.RowBgHover : OniUiTokens.RowBgNormal)
+                    : (on ? OniUiTokens.RowBgDisabledHover : OniUiTokens.RowBgDisabled);
+            }
         }
     }
 

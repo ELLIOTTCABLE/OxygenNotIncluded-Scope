@@ -8,8 +8,12 @@ namespace ScopeMod {
         public static List<RankedResult> Rank(string query, IList<IQuickAction> actions, int limit) {
             var results = new List<RankedResult>(limit);
             if (string.IsNullOrWhiteSpace(query)) {
-                int n = System.Math.Min(actions.Count, limit);
-                for (int i = 0; i < n; i++) results.Add(new RankedResult(actions[i], 0));
+                int added = 0;
+                for (int i = 0; i < actions.Count && added < limit; i++) {
+                    if (!actions[i].IsCurrentlyAvailable) continue;
+                    results.Add(new RankedResult(actions[i], 0));
+                    added++;
+                }
                 return results;
             }
 
@@ -29,7 +33,11 @@ namespace ScopeMod {
                 var match     = FuzzySearch.ScoreCanonicalCandidate(canonQuery, canonName);
                 if (match.score >= MIN_SCORE) scored.Add(new RankedResult(actions[i], match.score));
             }
-            scored.Sort((a, b) => b.Score.CompareTo(a.Score));
+            scored.Sort((a, b) => {
+                int tierCmp = a.Action.SearchDemotionTier.CompareTo(b.Action.SearchDemotionTier);
+                if (tierCmp != 0) return tierCmp;
+                return b.Score.CompareTo(a.Score);
+            });
 
             if (exactIdx >= 0) {
                 var exact = new RankedResult(actions[exactIdx], int.MaxValue);

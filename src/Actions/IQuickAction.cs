@@ -18,5 +18,17 @@ namespace ScopeMod {
         // Called after the overlay has been dismissed and after Input.anyKeyDown has cleared
         // (so Klei's KeyDown event has settled and won't bleed into game hotkeys).
         void Invoke();
+
+        // Generic availability flag for actions that can be shown but temporarily unavailable.
+        // Unavailable actions should remain visible but render in the disabled style.
+        bool IsCurrentlyAvailable { get; }
+
+        // Search ordering only: larger values are pushed lower in typed results.
+        // This is intentionally separate from IsCurrentlyAvailable so we can support
+        // non-interactive-but-visible actions without forcing visual disable styling.
+        int SearchDemotionTier { get; }
+
+        // Optional suffix for demoted section title (e.g. "unresearched").
+        string SearchDemotionSuffix { get; }
     }
 }

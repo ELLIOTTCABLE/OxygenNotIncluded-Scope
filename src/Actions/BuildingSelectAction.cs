@@ -6,17 +6,23 @@ namespace ScopeMod {
         private readonly BuildingDef def;
         private readonly string subcategoryKey;
         private readonly string subcategoryTitle;
+        private readonly PlanScreen.RequirementsState requirementsState;
 
-        public BuildingSelectAction(BuildingDef def, string subcategoryKey, string subcategoryTitle) {
+        public BuildingSelectAction(BuildingDef def, string subcategoryKey, string subcategoryTitle, PlanScreen.RequirementsState requirementsState) {
             this.def = def;
             this.subcategoryKey = subcategoryKey;
             this.subcategoryTitle = subcategoryTitle;
+            this.requirementsState = requirementsState;
         }
 
         public string DisplayName => STRINGS.UI.StripLinkFormatting(STRINGS.UI.StripStyleFormatting(def.Name));
         public Sprite Sprite => def.GetUISprite();
         public string SubcategoryKey => subcategoryKey;
         public string SubcategoryTitle => subcategoryTitle;
+        public bool IsCurrentlyAvailable => requirementsState == PlanScreen.RequirementsState.Complete;
+        public int SearchDemotionTier => IsCurrentlyAvailable ? 0 : 1;
+        public string SearchDemotionSuffix => requirementsState == PlanScreen.RequirementsState.Tech ? "unresearched" : "unavailable";
+        public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
         public void Invoke() {
             var plan = PlanScreen.Instance;

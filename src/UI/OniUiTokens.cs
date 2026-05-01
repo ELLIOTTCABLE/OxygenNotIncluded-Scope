@@ -52,11 +52,19 @@ namespace ScopeMod.UI {
 
       private static Color?         _rowBgNormal;
       private static Color?         _rowBgHover;
+      private static Color?         _rowBgDisabled;
+      private static Color?         _rowBgDisabledHover;
       private static Sprite         _rowBgSprite;
+      private static Sprite         _rowBgDisabledSprite;
       private static TMP_FontAsset  _rowFont;
       private static float?         _rowFontSize;
       private static Color?         _rowText;
+      private static float?         _rowIconSize;
       private static Material       _rowIconMaterial;
+      private static Material       _rowIconDisabledMaterial;
+      private static Sprite         _rowNeedsTechSprite;
+      private static Color?         _rowNeedsTechColor;
+      private static Vector2?       _rowNeedsTechSize;
 
       private static float?         _scrollbarWidth;
       private static Color?         _scrollbarTrackColor;
@@ -104,12 +112,19 @@ namespace ScopeMod.UI {
       public static Color         RowBgNormal         => _rowBgNormal         ?? ScopeUiDefaults.RowBgNormal;
       // Lerp fallback so a stolen RowBgNormal still drives a matching hover.
       public static Color         RowBgHover          => _rowBgHover          ?? Color.Lerp(RowBgNormal, Color.white, 0.18f);
+      public static Color         RowBgDisabled       => _rowBgDisabled       ?? ScopeUiDefaults.RowBgDisabled;
+      public static Color         RowBgDisabledHover  => _rowBgDisabledHover  ?? ScopeUiDefaults.RowBgDisabledHover;
       public static Sprite        RowBgSprite         => _rowBgSprite         ?? ScopeUiDefaults.RowBgSprite;
+      public static Sprite        RowBgDisabledSprite => _rowBgDisabledSprite ?? RowBgSprite;
       public static TMP_FontAsset RowFont             => _rowFont             ?? ScopeUiDefaults.RowFont;
       public static float         RowFontSize         => _rowFontSize         ?? ScopeUiDefaults.RowFontSize;
       public static Color         RowText             => _rowText             ?? ScopeUiDefaults.RowText;
-      public static float         RowIconSize         => ScopeUiDefaults.RowIconSize;
+      public static float         RowIconSize         => _rowIconSize         ?? ScopeUiDefaults.RowIconSize;
       public static Material      RowIconMaterial     => _rowIconMaterial     ?? ScopeUiDefaults.RowIconMaterial;
+      public static Material      RowIconDisabledMaterial => _rowIconDisabledMaterial ?? RowIconMaterial;
+      public static Sprite        RowNeedsTechSprite  => _rowNeedsTechSprite  ?? ScopeUiDefaults.RowNeedsTechSprite;
+      public static Color         RowNeedsTechColor   => _rowNeedsTechColor   ?? ScopeUiDefaults.RowNeedsTechColor;
+      public static Vector2       RowNeedsTechSize    => _rowNeedsTechSize    ?? ScopeUiDefaults.RowNeedsTechSize;
 
       public static float         ScrollbarWidth        => _scrollbarWidth        ?? ScopeUiDefaults.ScrollbarWidth;
       public static Color         ScrollbarTrackColor   => _scrollbarTrackColor   ?? ScopeUiDefaults.ScrollbarTrackColor;
@@ -281,6 +296,8 @@ namespace ScopeMod.UI {
          } else {
             TryExtract("Default icon material", () => {
                if (ps.defaultUIMaterial != null) _rowIconMaterial = ps.defaultUIMaterial;
+               if (ps.desaturatedUIMaterial != null) _rowIconDisabledMaterial = ps.desaturatedUIMaterial;
+               if (ps.Overlay_NeedTech != null) _rowNeedsTechSprite = ps.Overlay_NeedTech;
             });
 
             TryExtract("Row visuals", () => {
@@ -290,16 +307,27 @@ namespace ScopeMod.UI {
 
                var bgT = pbt.transform.Find("BG");
 
-               // Sample states[0] (canonical buildable+unselected) — sampling
+               // Sample states[0] (canonical enabled+unselected) — sampling
                // the live Image.color picks up whichever MultiToggle state
                // happens to be active, so a fresh save before anything's
-               // researched bakes the "not buildable" grey instead.
+               // researched bakes the disabled style instead.
                var mt = pbt.toggle;
                if (mt != null && mt.states != null && mt.states.Length > 0) {
                   var s0 = mt.states[0];
                   _rowBgNormal = s0.color;
                   if (s0.sprite != null) _rowBgSprite = s0.sprite;
                   if (s0.use_color_on_hover) _rowBgHover = s0.color_on_hover;
+
+                  if (mt.states.Length > 2) {
+                     var s2 = mt.states[2];
+                     _rowBgDisabled = s2.color;
+                     if (s2.sprite != null) _rowBgDisabledSprite = s2.sprite;
+                  }
+
+                  if (mt.states.Length > 3) {
+                     var s3 = mt.states[3];
+                     _rowBgDisabledHover = s3.color;
+                  }
                } else {
                   var bgImg = bgT?.GetComponent<Image>();
                   if (bgImg != null) {
@@ -314,6 +342,17 @@ namespace ScopeMod.UI {
                   _rowFont     = lbl.font;
                   _rowFontSize = lbl.fontSize;
                   _rowText     = lbl.color;
+               }
+
+               var listIcon = bgT?.Find("Image_ListView") as RectTransform;
+               if (listIcon != null) {
+                  _rowIconSize = Mathf.Max(listIcon.sizeDelta.x, listIcon.sizeDelta.y);
+               }
+
+               var fg = pbt.transform.Find("FG/ImageContainer/Image")?.GetComponent<Image>();
+               if (fg != null) {
+                  _rowNeedsTechColor = fg.color;
+                  if (fg.transform is RectTransform fgRT) _rowNeedsTechSize = fgRT.sizeDelta;
                }
             });
          }
@@ -365,12 +404,19 @@ namespace ScopeMod.UI {
          LogFloat (sb, "RowHeight",           false,                         RowHeight);
          LogColor (sb, "RowBgNormal",         _rowBgNormal.HasValue,         RowBgNormal);
          LogColor (sb, "RowBgHover",          _rowBgHover.HasValue,          RowBgHover);
+         LogColor (sb, "RowBgDisabled",       _rowBgDisabled.HasValue,       RowBgDisabled);
+         LogColor (sb, "RowBgDisabledHover",  _rowBgDisabledHover.HasValue,  RowBgDisabledHover);
          LogSprite(sb, "RowBgSprite",         _rowBgSprite != null,          RowBgSprite);
+         LogSprite(sb, "RowBgDisabledSprite", _rowBgDisabledSprite != null,  RowBgDisabledSprite);
          LogFont  (sb, "RowFont",             _rowFont != null,              RowFont);
          LogFloat (sb, "RowFontSize",         _rowFontSize.HasValue,         RowFontSize);
          LogColor (sb, "RowText",             _rowText.HasValue,             RowText);
          LogFloat (sb, "RowIconSize",         false,                         RowIconSize);
          LogMat   (sb, "RowIconMaterial",     _rowIconMaterial != null,      RowIconMaterial);
+         LogMat   (sb, "RowIconDisabledMaterial", _rowIconDisabledMaterial != null, RowIconDisabledMaterial);
+         LogSprite(sb, "RowNeedsTechSprite",  _rowNeedsTechSprite != null,   RowNeedsTechSprite);
+         LogColor (sb, "RowNeedsTechColor",   _rowNeedsTechColor.HasValue,   RowNeedsTechColor);
+         LogVec2  (sb, "RowNeedsTechSize",    _rowNeedsTechSize.HasValue,    RowNeedsTechSize);
 
          LogFloat (sb, "ScrollbarWidth",         _scrollbarWidth.HasValue,         ScrollbarWidth);
          LogColor (sb, "ScrollbarTrackColor",    _scrollbarTrackColor.HasValue,    ScrollbarTrackColor);
