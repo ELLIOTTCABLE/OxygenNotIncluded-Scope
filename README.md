@@ -2,6 +2,8 @@
 
 A Satisfactory/VScode/Discord-style 'command palette' / quicksearch UI for Oxygen Not Included.
 
+<img width="540" height="540" alt="scope-beta-compressed" src="https://github.com/user-attachments/assets/1f0f1798-9cec-4007-8281-f8bed5c74825" />
+
 ## Build
 
 Prereqs: .NET SDK 6+ (the project targets `netstandard2.1`), Oxygen Not Included installed.
