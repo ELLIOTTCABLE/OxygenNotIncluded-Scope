@@ -1,28 +1,38 @@
 using System;
+using System.Collections;
 using System.Linq;
 using System.Text;
+using HarmonyLib;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace ScopeMod.UI {
-   // The only place that walks Klei's hierarchy. On first overlay-open,
-   // lifts colours / fonts / sprites / sizes off the live UI. Every failure
-   // is bounded to a try/catch here so the mod falls back to ScopeUiDefaults
-   // — visual drift is acceptable, NRE is not.
+   // Lifts colours / fonts / sprites / sizes off Klei's live UI. Every
+   // token is lazy and retried per access until extraction succeeds; misses
+   // fall back to ScopeUiDefaults. I'd rather visual drift than everyone get
+   // hard crashes and have to bisect mods lol.
    //
-   // Path map as of 2026-04-30:
-   //   BuildingGroupScreen  ("BuildingGroups")
-   //     /TitleBar                               (24h)
-   //       /BGImage / CategoryLabel              header bg + title
-   //     /Searchbar                              (36h)
+   // (Why did I decide to not just write this in F#, again?)
+   //
+   // Path map (last sampled 2026-04-30):
+   //   BuildingGroupScreen ("BuildingGroups")
+   //     /TitleBar                               24h
+   //       /BGImage / CategoryLabel
+   //     /Searchbar                              36h
    //       /BG / FilterInputField                bluegrey row + 24h input
    //     /Viewport/Scrollbar/Handle              build_menu_scrollbar_*
-   //     /Viewport/Contents/SubCategory/Header   (16h)
+   //     /Viewport/Contents/SubCategory/Header   16h
    //       /BarLeft (8x2) / Arrow (12x8) / Label / BarRight (flex×2)
    //   PlanScreen.allBuildingToggles[*]/BG       row visuals (web_button)
+   //
+   // BuildingGroupScreen lives on PlanScreen.buildingGroupsRoot which
+   // PlanScreen.OnPrefabInit deactivates; its Instance is therefore null
+   // until the user opens a build category. Warmup() force-opens the
+   // first category to fix that.
    internal static class OniUiTokens {
-      // Backing fields — null/default means "not stolen, use default".
+      #region Caches
+
       private static Color?         _headerBg;
       private static float?         _headerHeight;
       private static TMP_FontAsset  _headerFont;
@@ -85,482 +95,493 @@ namespace ScopeMod.UI {
       private static float?         _scrollDecelerationRate;
       private static bool?          _scrollInertia;
 
-      // Public surface — stolen value if present, else default.
-      public static Color         HeaderBg            => _headerBg            ?? ScopeUiDefaults.HeaderBg;
-      public static float         HeaderHeight        => _headerHeight        ?? ScopeUiDefaults.HeaderHeight;
-      public static TMP_FontAsset HeaderFont          => _headerFont          ?? ScopeUiDefaults.HeaderFont;
-      public static float         HeaderFontSize      => _headerFontSize      ?? ScopeUiDefaults.HeaderFontSize;
-      public static Color         HeaderText          => _headerText          ?? ScopeUiDefaults.HeaderText;
+      #endregion
 
-      public static Color         SubheaderBg         => _subheaderBg         ?? ScopeUiDefaults.SubheaderBg;
-      public static float         SubheaderHeight     => _subheaderHeight     ?? ScopeUiDefaults.SubheaderHeight;
+      #region Public surface
 
-      public static Color         InputBg             => _inputBg             ?? ScopeUiDefaults.InputBg;
-      public static float         InputHeight         => _inputHeight         ?? ScopeUiDefaults.InputHeight;
-      public static TMP_FontAsset InputFont           => _inputFont           ?? ScopeUiDefaults.InputFont;
-      public static float         InputFontSize       => _inputFontSize       ?? ScopeUiDefaults.InputFontSize;
-      public static Color         InputText           => _inputText           ?? ScopeUiDefaults.InputText;
-      public static Color         InputPlaceholder    => _inputPlaceholder    ?? ScopeUiDefaults.InputPlaceholder;
-      public static Color         ClearButtonBgColor  => _clearButtonBgColor  ?? ScopeUiDefaults.ClearButtonBgColor;
-      public static Sprite        ClearButtonBgSprite => _clearButtonBgSprite ?? ScopeUiDefaults.ClearButtonBgSprite;
-      public static Color         ClearButtonFgColor  => _clearButtonFgColor  ?? ScopeUiDefaults.ClearButtonFgColor;
-      public static Sprite        ClearButtonFgSprite => _clearButtonFgSprite ?? ScopeUiDefaults.ClearButtonFgSprite;
-      public static Vector2       ClearButtonFgInset  => _clearButtonFgInset  ?? ScopeUiDefaults.ClearButtonFgInset;
-      public static Color         PanelBgColor        => _panelBgColor        ?? ScopeUiDefaults.PanelBgColor;
-      public static Sprite        PanelBgSprite       => _panelBgSprite       ?? ScopeUiDefaults.PanelBgSprite;
+      public static Color         HeaderBg            => CacheOpt(ref _headerBg,            Lift.HeaderBg,            ScopeUiDefaults.HeaderBg);
+      public static float         HeaderHeight        => CacheOpt(ref _headerHeight,        Lift.HeaderHeight,        ScopeUiDefaults.HeaderHeight);
+      public static TMP_FontAsset HeaderFont          => CacheRef(ref _headerFont,          Lift.HeaderFont,          ScopeUiDefaults.HeaderFont);
+      public static float         HeaderFontSize      => CacheOpt(ref _headerFontSize,      Lift.HeaderFontSize,      ScopeUiDefaults.HeaderFontSize);
+      public static Color         HeaderText          => CacheOpt(ref _headerText,          Lift.HeaderText,          ScopeUiDefaults.HeaderText);
+
+      public static Color         SubheaderBg         => CacheOpt(ref _subheaderBg,         Lift.SubheaderBg,         ScopeUiDefaults.SubheaderBg);
+      public static float         SubheaderHeight     => CacheOpt(ref _subheaderHeight,     Lift.SubheaderHeight,     ScopeUiDefaults.SubheaderHeight);
+
+      public static Color         InputBg             => CacheOpt(ref _inputBg,             Lift.InputBg,             ScopeUiDefaults.InputBg);
+      public static float         InputHeight         => CacheOpt(ref _inputHeight,         Lift.InputHeight,         ScopeUiDefaults.InputHeight);
+      public static TMP_FontAsset InputFont           => CacheRef(ref _inputFont,           Lift.InputFont,           ScopeUiDefaults.InputFont);
+      public static float         InputFontSize       => CacheOpt(ref _inputFontSize,       Lift.InputFontSize,       ScopeUiDefaults.InputFontSize);
+      public static Color         InputText           => CacheOpt(ref _inputText,           Lift.InputText,           ScopeUiDefaults.InputText);
+      public static Color         InputPlaceholder    => CacheOpt(ref _inputPlaceholder,    Lift.InputPlaceholder,    ScopeUiDefaults.InputPlaceholder);
+      public static Color         ClearButtonBgColor  => CacheOpt(ref _clearButtonBgColor,  Lift.ClearButtonBgColor,  ScopeUiDefaults.ClearButtonBgColor);
+      public static Sprite        ClearButtonBgSprite => CacheRef(ref _clearButtonBgSprite, Lift.ClearButtonBgSprite, ScopeUiDefaults.ClearButtonBgSprite);
+      public static Color         ClearButtonFgColor  => CacheOpt(ref _clearButtonFgColor,  Lift.ClearButtonFgColor,  ScopeUiDefaults.ClearButtonFgColor);
+      public static Sprite        ClearButtonFgSprite => CacheRef(ref _clearButtonFgSprite, Lift.ClearButtonFgSprite, ScopeUiDefaults.ClearButtonFgSprite);
+      public static Vector2       ClearButtonFgInset  => CacheOpt(ref _clearButtonFgInset,  Lift.ClearButtonFgInset,  ScopeUiDefaults.ClearButtonFgInset);
+      public static Color         PanelBgColor        => CacheOpt(ref _panelBgColor,        Lift.PanelBgColor,        ScopeUiDefaults.PanelBgColor);
+      public static Sprite        PanelBgSprite       => CacheRef(ref _panelBgSprite,       Lift.PanelBgSprite,       ScopeUiDefaults.PanelBgSprite);
 
       public static Color         BodyBg              => ScopeUiDefaults.BodyBg;
 
-      public static TMP_FontAsset SectionFont         => _sectionFont         ?? ScopeUiDefaults.SectionFont;
-      public static float         SectionFontSize     => _sectionFontSize     ?? ScopeUiDefaults.SectionFontSize;
-      public static Color         SectionText         => _sectionText         ?? ScopeUiDefaults.SectionText;
-      public static Color         SectionRule         => _sectionRule         ?? ScopeUiDefaults.SectionRule;
-      public static float         SectionHeight       => _sectionHeight       ?? ScopeUiDefaults.SectionHeight;
-      public static float         SectionRuleHeight   => _sectionRuleHeight   ?? ScopeUiDefaults.SectionRuleHeight;
-      public static float         SectionBarLeftWidth => _sectionBarLeftWidth ?? ScopeUiDefaults.SectionBarLeftWidth;
-      public static Vector2       SectionArrowSize    => _sectionArrowSize    ?? ScopeUiDefaults.SectionArrowSize;
-      public static Sprite        SectionBarSprite    => _sectionBarSprite    ?? ScopeUiDefaults.SectionBarSprite;
-      public static Sprite        SectionArrowSprite  => _sectionArrowSprite  ?? ScopeUiDefaults.SectionArrowSprite;
+      public static TMP_FontAsset SectionFont         => CacheRef(ref _sectionFont,         Lift.SectionFont,         ScopeUiDefaults.SectionFont);
+      public static float         SectionFontSize     => CacheOpt(ref _sectionFontSize,     Lift.SectionFontSize,     ScopeUiDefaults.SectionFontSize);
+      public static Color         SectionText         => CacheOpt(ref _sectionText,         Lift.SectionText,         ScopeUiDefaults.SectionText);
+      public static Color         SectionRule         => CacheOpt(ref _sectionRule,         Lift.SectionRule,         ScopeUiDefaults.SectionRule);
+      public static float         SectionHeight       => CacheOpt(ref _sectionHeight,       Lift.SectionHeight,       ScopeUiDefaults.SectionHeight);
+      public static float         SectionRuleHeight   => CacheOpt(ref _sectionRuleHeight,   Lift.SectionRuleHeight,   ScopeUiDefaults.SectionRuleHeight);
+      public static float         SectionBarLeftWidth => CacheOpt(ref _sectionBarLeftWidth, Lift.SectionBarLeftWidth, ScopeUiDefaults.SectionBarLeftWidth);
+      public static Vector2       SectionArrowSize    => CacheOpt(ref _sectionArrowSize,    Lift.SectionArrowSize,    ScopeUiDefaults.SectionArrowSize);
+      public static Sprite        SectionBarSprite    => CacheRef(ref _sectionBarSprite,    Lift.SectionBarSprite,    ScopeUiDefaults.SectionBarSprite);
+      public static Sprite        SectionArrowSprite  => CacheRef(ref _sectionArrowSprite,  Lift.SectionArrowSprite,  ScopeUiDefaults.SectionArrowSprite);
 
       public static float         RowHeight           => ScopeUiDefaults.RowHeight;
-      public static Color         RowBgNormal         => _rowBgNormal         ?? ScopeUiDefaults.RowBgNormal;
-      // Lerp fallback so a stolen RowBgNormal still drives a matching hover.
-      public static Color         RowBgHover          => _rowBgHover          ?? Color.Lerp(RowBgNormal, Color.white, 0.18f);
-      public static Color         RowBgDisabled       => _rowBgDisabled       ?? ScopeUiDefaults.RowBgDisabled;
-      public static Color         RowBgDisabledHover  => _rowBgDisabledHover  ?? ScopeUiDefaults.RowBgDisabledHover;
-      public static Sprite        RowBgSprite         => _rowBgSprite         ?? ScopeUiDefaults.RowBgSprite;
-      public static Sprite        RowBgDisabledSprite => _rowBgDisabledSprite ?? RowBgSprite;
-      public static TMP_FontAsset RowFont             => _rowFont             ?? ScopeUiDefaults.RowFont;
-      public static float         RowFontSize         => _rowFontSize         ?? ScopeUiDefaults.RowFontSize;
-      public static Color         RowText             => _rowText             ?? ScopeUiDefaults.RowText;
-      public static float         RowIconSize         => _rowIconSize         ?? ScopeUiDefaults.RowIconSize;
-      public static Material      RowIconMaterial     => _rowIconMaterial     ?? ScopeUiDefaults.RowIconMaterial;
-      public static Material      RowIconDisabledMaterial => _rowIconDisabledMaterial ?? RowIconMaterial;
-      public static Sprite        RowNeedsTechSprite  => _rowNeedsTechSprite  ?? ScopeUiDefaults.RowNeedsTechSprite;
-      public static Color         RowNeedsTechColor   => _rowNeedsTechColor   ?? ScopeUiDefaults.RowNeedsTechColor;
-      public static Vector2       RowNeedsTechSize    => _rowNeedsTechSize    ?? ScopeUiDefaults.RowNeedsTechSize;
+      public static Color         RowBgNormal         => CacheOpt(ref _rowBgNormal,         Lift.RowBgNormal,         ScopeUiDefaults.RowBgNormal);
+      // Lerp default keeps hover in step with a stolen RowBgNormal.
+      public static Color         RowBgHover          => CacheOpt(ref _rowBgHover,          Lift.RowBgHover,          Color.Lerp(RowBgNormal, Color.white, 0.18f));
+      public static Color         RowBgDisabled       => CacheOpt(ref _rowBgDisabled,       Lift.RowBgDisabled,       ScopeUiDefaults.RowBgDisabled);
+      public static Color         RowBgDisabledHover  => CacheOpt(ref _rowBgDisabledHover,  Lift.RowBgDisabledHover,  ScopeUiDefaults.RowBgDisabledHover);
+      public static Sprite        RowBgSprite         => CacheRef(ref _rowBgSprite,         Lift.RowBgSprite,         ScopeUiDefaults.RowBgSprite);
+      public static Sprite        RowBgDisabledSprite => CacheRef(ref _rowBgDisabledSprite, Lift.RowBgDisabledSprite, RowBgSprite);
+      public static TMP_FontAsset RowFont             => CacheRef(ref _rowFont,             Lift.RowFont,             ScopeUiDefaults.RowFont);
+      public static float         RowFontSize         => CacheOpt(ref _rowFontSize,         Lift.RowFontSize,         ScopeUiDefaults.RowFontSize);
+      public static Color         RowText             => CacheOpt(ref _rowText,             Lift.RowText,             ScopeUiDefaults.RowText);
+      public static float         RowIconSize         => CacheOpt(ref _rowIconSize,         Lift.RowIconSize,         ScopeUiDefaults.RowIconSize);
+      public static Material      RowIconMaterial     => CacheRef(ref _rowIconMaterial,     Lift.RowIconMaterial,     ScopeUiDefaults.RowIconMaterial);
+      public static Material      RowIconDisabledMaterial => CacheRef(ref _rowIconDisabledMaterial, Lift.RowIconDisabledMaterial, RowIconMaterial);
+      public static Sprite        RowNeedsTechSprite  => CacheRef(ref _rowNeedsTechSprite,  Lift.RowNeedsTechSprite,  ScopeUiDefaults.RowNeedsTechSprite);
+      public static Color         RowNeedsTechColor   => CacheOpt(ref _rowNeedsTechColor,   Lift.RowNeedsTechColor,   ScopeUiDefaults.RowNeedsTechColor);
+      public static Vector2       RowNeedsTechSize    => CacheOpt(ref _rowNeedsTechSize,    Lift.RowNeedsTechSize,    ScopeUiDefaults.RowNeedsTechSize);
 
-      public static float         ScrollbarWidth        => _scrollbarWidth        ?? ScopeUiDefaults.ScrollbarWidth;
-      public static Color         ScrollbarTrackColor   => _scrollbarTrackColor   ?? ScopeUiDefaults.ScrollbarTrackColor;
-      public static Sprite        ScrollbarTrackSprite  => _scrollbarTrackSprite  ?? ScopeUiDefaults.ScrollbarTrackSprite;
-      public static Color         ScrollbarHandleColor  => _scrollbarHandleColor  ?? ScopeUiDefaults.ScrollbarHandleColor;
-      public static Sprite        ScrollbarHandleSprite => _scrollbarHandleSprite ?? ScopeUiDefaults.ScrollbarHandleSprite;
-      public static Vector2       ScrollbarHandleInset  => _scrollbarHandleInset  ?? ScopeUiDefaults.ScrollbarHandleInset;
+      public static float         ScrollbarWidth        => CacheOpt(ref _scrollbarWidth,        Lift.ScrollbarWidth,        ScopeUiDefaults.ScrollbarWidth);
+      public static Color         ScrollbarTrackColor   => CacheOpt(ref _scrollbarTrackColor,   Lift.ScrollbarTrackColor,   ScopeUiDefaults.ScrollbarTrackColor);
+      public static Sprite        ScrollbarTrackSprite  => CacheRef(ref _scrollbarTrackSprite,  Lift.ScrollbarTrackSprite,  ScopeUiDefaults.ScrollbarTrackSprite);
+      public static Color         ScrollbarHandleColor  => CacheOpt(ref _scrollbarHandleColor,  Lift.ScrollbarHandleColor,  ScopeUiDefaults.ScrollbarHandleColor);
+      public static Sprite        ScrollbarHandleSprite => CacheRef(ref _scrollbarHandleSprite, Lift.ScrollbarHandleSprite, ScopeUiDefaults.ScrollbarHandleSprite);
+      public static Vector2       ScrollbarHandleInset  => CacheOpt(ref _scrollbarHandleInset,  Lift.ScrollbarHandleInset,  ScopeUiDefaults.ScrollbarHandleInset);
 
-      public static float         ScrollElasticity       => _scrollElasticity       ?? ScopeUiDefaults.ScrollElasticity;
-      public static float         ScrollSensitivity      => _scrollSensitivity      ?? ScopeUiDefaults.ScrollSensitivity;
-      public static float         ScrollDecelerationRate => _scrollDecelerationRate ?? ScopeUiDefaults.ScrollDecelerationRate;
-      public static bool          ScrollInertia          => _scrollInertia          ?? ScopeUiDefaults.ScrollInertia;
+      public static float         ScrollElasticity       => CacheOpt(ref _scrollElasticity,       Lift.ScrollElasticity,       ScopeUiDefaults.ScrollElasticity);
+      public static float         ScrollSensitivity      => CacheOpt(ref _scrollSensitivity,      Lift.ScrollSensitivity,      ScopeUiDefaults.ScrollSensitivity);
+      public static float         ScrollDecelerationRate => CacheOpt(ref _scrollDecelerationRate, Lift.ScrollDecelerationRate, ScopeUiDefaults.ScrollDecelerationRate);
+      public static bool          ScrollInertia          => CacheOpt(ref _scrollInertia,          Lift.ScrollInertia,          ScopeUiDefaults.ScrollInertia);
 
-      // Gates the [Scope-Tokens] summary + [Scope-UI-Dump] hierarchy logs.
-      // The dump alone is ~4000 lines; leave off in normal use.
-      private const bool LOG_DEBUG = false;
+      #endregion
 
-      private static bool extracted;
-      private static bool dumped;
+      #region Cache helpers
 
-      public static void EnsureExtracted() {
-         if (extracted) return;
-         extracted = true; // even on partial failure, don't keep retrying every open
+      // Once extract returns non-null we cache forever; null returns
+      // mean "not ready, retry next access". Exceptions are logged once
+      // per extractor name and treated as a miss.
+      private static T CacheOpt<T>(ref T? cache, Func<T?> extract, T def) where T : struct {
+         if (cache.HasValue) return cache.Value;
+         T? v;
+         try { v = extract(); }
+         catch (Exception ex) { ReportExtractFailure(extract.Method.Name, ex); return def; }
+         if (v.HasValue) { cache = v; return v.Value; }
+         return def;
+      }
 
-         try {
-            ExtractFromLiveScene();
-         } catch (Exception ex) {
-            Debug.LogWarning($"[Scope] Token extraction outer failure; using fallbacks: {ex}");
-         }
+      private static T CacheRef<T>(ref T cache, Func<T> extract, T def) where T : UnityEngine.Object {
+         if (cache != null) return cache;
+         T v;
+         try { v = extract(); }
+         catch (Exception ex) { ReportExtractFailure(extract.Method.Name, ex); return def; }
+         if (v != null) { cache = v; return v; }
+         return def;
+      }
 
-#pragma warning disable CS0162 // unreachable when LOG_DEBUG is const false
-         if (LOG_DEBUG) {
-            try { LogResolvedTokens(); }
-            catch (Exception ex) { Debug.LogWarning($"[Scope] Token log failed: {ex.Message}"); }
+      private static readonly System.Collections.Generic.HashSet<string> _reportedFailures
+         = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
 
-            if (!dumped) {
-               dumped = true;
-               try { DumpHierarchies(); }
-               catch (Exception ex) { Debug.LogWarning($"[Scope] Hierarchy dump failed: {ex.Message}"); }
+      private static void ReportExtractFailure(string extractorName, Exception ex) {
+         if (_reportedFailures.Add(extractorName))
+            Debug.LogWarning($"[Scope] Extractor {extractorName} threw (suppressing further reports): {ex}");
+      }
+
+      #endregion
+
+      #region Extractors
+      // Each Lift.* token returns null on any miss; CacheOpt/CacheRef retry
+      // next access. .Live() converts Unity fake-null to real null so `?.`
+      // chains short-circuit on destroyed-but-not-yet-GC'd refs.
+      private static class Lift {
+         // Singletons.
+         private static BuildingGroupScreen Bgs() => BuildingGroupScreen.Instance.Live();
+         private static PlanScreen          Plan() => PlanScreen.Instance.Live();
+
+         // Anchors — shared subtrees that several tokens read off.
+         private static Image     BgPanel() => Bgs()?.transform.Find("BGPanel")?.GetComponent<Image>();
+         private static Transform TitleBar() => Bgs()?.transform.Find("TitleBar");
+         private static TextMeshProUGUI HeaderLabel() => TitleBar()?.Find("CategoryLabel")?.GetComponent<TextMeshProUGUI>();
+         private static Transform Searchbar() => Bgs()?.transform.Find("Searchbar");
+         private static Transform FilterInputField() => Searchbar()?.Find("FilterInputField");
+         // Renamed from "InputText" to avoid colliding with the InputText (Color) token below.
+         private static TextMeshProUGUI InputLabel() => FilterInputField()?.Find("Text Area/Text")?.GetComponent<TextMeshProUGUI>();
+         private static Transform ClearSearchButton() => Searchbar()?.Find("ClearSearchButton");
+         private static Image     ClearBg() => ClearSearchButton()?.Find("BG")?.GetComponent<Image>();
+         private static Image     ClearFg() => ClearSearchButton()?.Find("FG")?.GetComponent<Image>();
+         private static ScrollRect MainScroll() => Plan()?.BuildingGroupContentsRect.Live()?.GetComponent<ScrollRect>();
+         private static Transform ScrollbarTrack() => Bgs()?.transform.Find("Viewport/Scrollbar");
+
+         private static Transform FirstSubcategoryHeader() {
+            var contents = Bgs()?.transform.Find("Viewport/Contents");
+            if (contents == null) return null;
+            for (int i = 0; i < contents.childCount; i++) {
+               var child = contents.GetChild(i);
+               if (child == null || child.name != "SubCategory") continue;
+               var h = child.Find("Header");
+               if (h != null) return h;
             }
+            return null;
          }
-#pragma warning restore CS0162
+
+         private static Image           SectionBarLeft() => FirstSubcategoryHeader()?.Find("BarLeft")?.GetComponent<Image>();
+         private static TextMeshProUGUI SectionLabel() => FirstSubcategoryHeader()?.Find("Label")?.GetComponent<TextMeshProUGUI>();
+
+         // MultiToggle.states[0] is canonical "enabled, unselected"; sampling the live
+         // Image.color instead picks up whichever state happens to be active.
+         private static PlanBuildingToggle SamplePlanToggle() {
+            var toggles = Plan()?.allBuildingToggles;
+            if (toggles == null || toggles.Count == 0) return null;
+            return toggles.Values.FirstOrDefault(x => x != null);
+         }
+         private static MultiToggle      SampleMultiToggle() => SamplePlanToggle()?.toggle;
+         private static Image            SampleToggleBgImage() => SamplePlanToggle()?.transform.Find("BG")?.GetComponent<Image>();
+         private static TextMeshProUGUI  SampleListLabel() {
+            var pbt = SamplePlanToggle();
+            return pbt?.text_listView
+                ?? pbt?.transform.Find("BG/NameLabel_ListView")?.GetComponent<TextMeshProUGUI>();
+         }
+         private static Image NeedTechBadge() => SamplePlanToggle()?.transform.Find("FG/ImageContainer/Image")?.GetComponent<Image>();
+
+         // sizeDelta is unreliable on stretched-anchor RTs (zero ≠ height);
+         // prefer LayoutElement intent → post-layout rect → sizeDelta. Returns
+         // null when no source is positive, so CacheOpt uses the default and
+         // retries next access (gives layout time to settle).
+         private static float? Height(RectTransform rt) {
+            if (rt == null) return null;
+            var le = rt.GetComponent<LayoutElement>();
+            if (le != null && le.preferredHeight > 0f) return le.preferredHeight;
+            if (rt.rect.height > 0f) return rt.rect.height;
+            if (rt.sizeDelta.y > 0f) return rt.sizeDelta.y;
+            return null;
+         }
+         private static float? Width(RectTransform rt) {
+            if (rt == null) return null;
+            var le = rt.GetComponent<LayoutElement>();
+            if (le != null && le.preferredWidth > 0f) return le.preferredWidth;
+            if (rt.rect.width > 0f) return rt.rect.width;
+            if (rt.sizeDelta.x > 0f) return rt.sizeDelta.x;
+            return null;
+         }
+         private static Vector2? Size(RectTransform rt) {
+            var w = Width(rt);
+            var h = Height(rt);
+            return (w.HasValue && h.HasValue) ? new Vector2(w.Value, h.Value) : (Vector2?)null;
+         }
+         // sizeDelta-as-inset semantic; reject (0,0) as uninformative.
+         private static Vector2? Inset(RectTransform rt) {
+            if (rt == null) return null;
+            var v = rt.sizeDelta;
+            return (v.x != 0f || v.y != 0f) ? v : (Vector2?)null;
+         }
+         // Reject zero/negative font sizes — never sane.
+         private static float? PositiveFont(TMP_Text t) => t != null && t.fontSize > 0f ? t.fontSize : (float?)null;
+         // Reject default(Color) = (0,0,0,0). None of ScopeUiDefaults' colours are
+         // default(Color), so extracting it is always a "value not yet initialized" miss.
+         private static Color? Visible(Color? c) => c.HasValue && c.Value != default ? c : (Color?)null;
+
+         // Tokens.
+         public static Color?  PanelBgColor()  => Visible(BgPanel()?.color);
+         public static Sprite  PanelBgSprite() => BgPanel()?.sprite;
+
+         public static Color?         HeaderBg()       => Visible(TitleBar()?.Find("BGImage")?.GetComponent<Image>()?.color);
+         public static float?         HeaderHeight()   => Height(TitleBar() as RectTransform);
+         public static TMP_FontAsset  HeaderFont()     => HeaderLabel()?.font;
+         public static float?         HeaderFontSize() => PositiveFont(HeaderLabel());
+         public static Color?         HeaderText()     => Visible(HeaderLabel()?.color);
+
+         public static float? SubheaderHeight() => Height(Searchbar() as RectTransform);
+         public static Color? SubheaderBg()     => Visible(Searchbar()?.Find("BG")?.GetComponent<Image>()?.color);
+
+         public static float? InputHeight()      => Height(FilterInputField() as RectTransform);
+         public static Color? InputBg()          => Visible(FilterInputField()?.GetComponent<Image>()?.color);
+         public static Color? InputPlaceholder() => Visible(FilterInputField()?.Find("Text Area/Placeholder")?.GetComponent<TextMeshProUGUI>()?.color);
+         public static TMP_FontAsset InputFont()     => InputLabel()?.font;
+         public static float?        InputFontSize() => PositiveFont(InputLabel());
+         public static Color?        InputText()     => Visible(InputLabel()?.color);
+
+         public static Color?  ClearButtonBgColor()  => Visible(ClearBg()?.color);
+         public static Sprite  ClearButtonBgSprite() => ClearBg()?.sprite;
+         public static Color?  ClearButtonFgColor()  => Visible(ClearFg()?.color);
+         public static Sprite  ClearButtonFgSprite() => ClearFg()?.sprite;
+         public static Vector2? ClearButtonFgInset() => Inset(ClearFg()?.transform as RectTransform);
+
+         public static float? ScrollElasticity()       => MainScroll()?.elasticity;
+         public static float? ScrollSensitivity()      => MainScroll()?.scrollSensitivity;
+         public static float? ScrollDecelerationRate() => MainScroll()?.decelerationRate;
+         public static bool?  ScrollInertia()          => MainScroll()?.inertia;
+
+         public static float?  ScrollbarWidth()        => Width(ScrollbarTrack() as RectTransform);
+         public static Color?  ScrollbarTrackColor()   => Visible(ScrollbarTrack()?.GetComponent<Image>()?.color);
+         public static Sprite  ScrollbarTrackSprite()  => ScrollbarTrack()?.GetComponent<Image>()?.sprite;
+         public static Color?  ScrollbarHandleColor()  => Visible(ScrollbarTrack()?.Find("Handle")?.GetComponent<Image>()?.color);
+         public static Sprite  ScrollbarHandleSprite() => ScrollbarTrack()?.Find("Handle")?.GetComponent<Image>()?.sprite;
+         public static Vector2? ScrollbarHandleInset() => Inset(ScrollbarTrack()?.Find("Handle") as RectTransform);
+
+         public static float?   SectionHeight()       => Height(FirstSubcategoryHeader() as RectTransform);
+         public static Sprite   SectionArrowSprite()  => FirstSubcategoryHeader()?.Find("Arrow")?.GetComponent<Image>()?.sprite;
+         public static Vector2? SectionArrowSize()    => Size(FirstSubcategoryHeader()?.Find("Arrow") as RectTransform);
+         public static Color?   SectionRule()         => Visible(SectionBarLeft()?.color);
+         public static Sprite   SectionBarSprite()    => SectionBarLeft()?.sprite;
+         public static float?   SectionRuleHeight()   => Height(SectionBarLeft()?.transform as RectTransform);
+         public static float?   SectionBarLeftWidth() => Width(SectionBarLeft()?.transform as RectTransform);
+         public static TMP_FontAsset SectionFont()     => SectionLabel()?.font;
+         public static float?        SectionFontSize() => PositiveFont(SectionLabel());
+         public static Color?        SectionText()     => Visible(SectionLabel()?.color);
+
+         public static Material RowIconMaterial()         => Plan()?.defaultUIMaterial;
+         public static Material RowIconDisabledMaterial() => Plan()?.desaturatedUIMaterial;
+         public static Sprite   RowNeedsTechSprite()      => Plan()?.Overlay_NeedTech;
+
+         public static Color? RowBgNormal() {
+            var mt = SampleMultiToggle();
+            if (mt?.states != null && mt.states.Length > 0) return Visible(mt.states[0].color);
+            return Visible(SampleToggleBgImage()?.color);
+         }
+         public static Sprite RowBgSprite() {
+            var mt = SampleMultiToggle();
+            var s0 = mt?.states != null && mt.states.Length > 0 ? mt.states[0].sprite : null;
+            return s0 != null ? s0 : SampleToggleBgImage()?.sprite;
+         }
+         public static Color? RowBgHover() {
+            var mt = SampleMultiToggle();
+            if (mt?.states == null || mt.states.Length == 0) return null;
+            var s0 = mt.states[0];
+            return s0.use_color_on_hover ? Visible(s0.color_on_hover) : (Color?)null;
+         }
+         public static Color? RowBgDisabled() {
+            var mt = SampleMultiToggle();
+            return mt?.states != null && mt.states.Length > 2 ? Visible(mt.states[2].color) : (Color?)null;
+         }
+         public static Sprite RowBgDisabledSprite() {
+            var mt = SampleMultiToggle();
+            return mt?.states != null && mt.states.Length > 2 ? mt.states[2].sprite : null;
+         }
+         public static Color? RowBgDisabledHover() {
+            var mt = SampleMultiToggle();
+            return mt?.states != null && mt.states.Length > 3 ? Visible(mt.states[3].color) : (Color?)null;
+         }
+
+         public static TMP_FontAsset RowFont()     => SampleListLabel()?.font;
+         public static float?        RowFontSize() => PositiveFont(SampleListLabel());
+         public static Color?        RowText()     => Visible(SampleListLabel()?.color);
+         public static float?        RowIconSize() {
+            var s = Size(SamplePlanToggle()?.transform.Find("BG/Image_ListView") as RectTransform);
+            return s.HasValue ? Mathf.Max(s.Value.x, s.Value.y) : (float?)null;
+         }
+
+         public static Color?   RowNeedsTechColor() => Visible(NeedTechBadge()?.color);
+         public static Vector2? RowNeedsTechSize()  => Size(NeedTechBadge()?.transform as RectTransform);
       }
+      #endregion
 
-      private static void ExtractFromLiveScene() {
-         var ps  = PlanScreen.Instance;
-         var bgs = BuildingGroupScreen.Instance;
+      #region Warmup
 
-         if (bgs == null) {
-            Debug.LogWarning("[Scope] BuildingGroupScreen.Instance is null at extraction time; using fallbacks.");
-         } else {
-            TryExtract("BGPanel", () => {
-               var bgPanel = bgs.transform.Find("BGPanel")?.GetComponent<Image>();
-               if (bgPanel == null) return;
-               _panelBgColor = bgPanel.color;
-               if (bgPanel.sprite != null) _panelBgSprite = bgPanel.sprite;
-            });
+      // BuildingGroupScreen.Instance is null until the user opens a build
+      // category (PlanScreen.OnPrefabInit deactivates buildingGroupsRoot).
+      // Click the first category to trigger Klei's onSelect → OnClickCategory
+      // → OpenCategoryPanel chain; the menu opens visibly and stays open.
+      public static void Warmup() {
+         try {
+            if (BuildingGroupScreen.Instance != null) return;
 
-            TryExtract("TitleBar", () => {
-               var titleBar = bgs.transform.Find("TitleBar");
-               if (titleBar == null) return;
-               if (titleBar is RectTransform tbRT) _headerHeight = tbRT.sizeDelta.y;
+            var ps = PlanScreen.Instance;
+            if (ps == null) {
+               Debug.LogWarning("[Scope] Warmup: PlanScreen.Instance null; skipping.");
+               return;
+            }
 
-               var bgImg = titleBar.Find("BGImage")?.GetComponent<Image>();
-               if (bgImg != null) _headerBg = bgImg.color;
+            var togglesField = AccessTools.Field(typeof(KIconToggleMenu), "toggles");
+            var togglesObj = togglesField?.GetValue(ps);
+            if (!(togglesObj is IList toggles) || toggles.Count == 0) {
+               Debug.LogWarning("[Scope] Warmup: PlanScreen.toggles empty/inaccessible.");
+               return;
+            }
 
-               var label = titleBar.Find("CategoryLabel")?.GetComponent<TextMeshProUGUI>();
-               if (label != null) {
-                  _headerFont     = label.font;
-                  _headerFontSize = label.fontSize;
-                  _headerText     = label.color;
-               }
-            });
+            if (!(toggles[0] is KToggle first)) {
+               Debug.LogWarning("[Scope] Warmup: first toggle is null/non-KToggle.");
+               return;
+            }
 
-            TryExtract("Searchbar", () => {
-               var sb = bgs.transform.Find("Searchbar");
-               if (sb == null) return;
-               if (sb is RectTransform sbRT) _subheaderHeight = sbRT.sizeDelta.y;
+            Mod.Log("[Scope] Warmup: clicking first build-category toggle.");
+            first.Click();
 
-               var sbBg = sb.Find("BG")?.GetComponent<Image>();
-               if (sbBg != null) _subheaderBg = sbBg.color;
-
-               var fif = sb.Find("FilterInputField");
-               if (fif is RectTransform fifRT) _inputHeight = fifRT.sizeDelta.y;
-               var fifImg = fif?.GetComponent<Image>();
-               if (fifImg != null) _inputBg = fifImg.color;
-
-               var ph = fif?.Find("Text Area/Placeholder")?.GetComponent<TextMeshProUGUI>();
-               if (ph != null) _inputPlaceholder = ph.color;
-
-               var txt = fif?.Find("Text Area/Text")?.GetComponent<TextMeshProUGUI>();
-               if (txt != null) {
-                  _inputFont     = txt.font;
-                  _inputFontSize = txt.fontSize;
-                  _inputText     = txt.color;
-               }
-
-               var clearButton = sb.Find("ClearSearchButton");
-               var clearBg = clearButton?.Find("BG")?.GetComponent<Image>();
-               if (clearBg != null) {
-                  _clearButtonBgColor = clearBg.color;
-                  if (clearBg.sprite != null) _clearButtonBgSprite = clearBg.sprite;
-               }
-
-               var clearFg = clearButton?.Find("FG")?.GetComponent<Image>();
-               if (clearFg != null) {
-                  _clearButtonFgColor = clearFg.color;
-                  if (clearFg.sprite != null) _clearButtonFgSprite = clearFg.sprite;
-                  if (clearFg.transform is RectTransform clearFgRT) _clearButtonFgInset = clearFgRT.sizeDelta;
-               }
-            });
-
-            TryExtract("ScrollRect feel", () => {
-               var scroll = PlanScreen.Instance?.BuildingGroupContentsRect?.GetComponent<ScrollRect>();
-               if (scroll == null) return;
-               _scrollElasticity       = scroll.elasticity;
-               _scrollSensitivity      = scroll.scrollSensitivity;
-               _scrollDecelerationRate = scroll.decelerationRate;
-               _scrollInertia          = scroll.inertia;
-            });
-
-            TryExtract("Scrollbar", () => {
-               var sbTrack = bgs.transform.Find("Viewport/Scrollbar");
-               if (sbTrack == null) return;
-
-               if (sbTrack is RectTransform sbRT) _scrollbarWidth = sbRT.sizeDelta.x;
-
-               var trackImg = sbTrack.GetComponent<Image>();
-               if (trackImg != null) {
-                  _scrollbarTrackColor  = trackImg.color;
-                  if (trackImg.sprite != null) _scrollbarTrackSprite = trackImg.sprite;
-               }
-
-               var handleT = sbTrack.Find("Handle");
-               if (handleT == null) return;
-
-               var handleImg = handleT.GetComponent<Image>();
-               if (handleImg != null) {
-                  _scrollbarHandleColor  = handleImg.color;
-                  if (handleImg.sprite != null) _scrollbarHandleSprite = handleImg.sprite;
-               }
-               if (handleT is RectTransform handleRT) {
-                  _scrollbarHandleInset = handleRT.sizeDelta;
-               }
-            });
-
-            TryExtract("SubCategory header", () => {
-               var contents = bgs.transform.Find("Viewport/Contents");
-               if (contents == null) return;
-
-               Transform headerT = null;
-               for (int i = 0; i < contents.childCount; i++) {
-                  var child = contents.GetChild(i);
-                  if (child.name != "SubCategory") continue;
-                  headerT = child.Find("Header");
-                  if (headerT != null) break;
-               }
-               if (headerT == null) return;
-
-               if (headerT is RectTransform hRT) _sectionHeight = hRT.sizeDelta.y;
-
-               var arrow = headerT.Find("Arrow")?.GetComponent<Image>();
-               if (arrow != null) {
-                  // arrow.color isn't extracted: it's just SectionText (black) under a different name.
-                  _sectionArrowSprite = arrow.sprite;
-                  if (arrow.transform is RectTransform aRT) _sectionArrowSize = aRT.sizeDelta;
-               }
-
-               var barL = headerT.Find("BarLeft")?.GetComponent<Image>();
-               if (barL != null) {
-                  _sectionRule      = barL.color;
-                  _sectionBarSprite = barL.sprite;
-                  if (barL.transform is RectTransform blRT) {
-                     _sectionRuleHeight   = blRT.sizeDelta.y;
-                     _sectionBarLeftWidth = blRT.sizeDelta.x;
-                  }
-               }
-
-               var label = headerT.Find("Label")?.GetComponent<TextMeshProUGUI>();
-               if (label != null) {
-                  _sectionFont     = label.font;
-                  _sectionFontSize = label.fontSize;
-                  _sectionText     = label.color;
-               }
-            });
-         }
-
-         if (ps == null) {
-            Debug.LogWarning("[Scope] PlanScreen.Instance is null at extraction time; using fallbacks.");
-         } else {
-            TryExtract("Default icon material", () => {
-               if (ps.defaultUIMaterial != null) _rowIconMaterial = ps.defaultUIMaterial;
-               if (ps.desaturatedUIMaterial != null) _rowIconDisabledMaterial = ps.desaturatedUIMaterial;
-               if (ps.Overlay_NeedTech != null) _rowNeedsTechSprite = ps.Overlay_NeedTech;
-            });
-
-            TryExtract("Row visuals", () => {
-               if (ps.allBuildingToggles == null || ps.allBuildingToggles.Count == 0) return;
-               var pbt = ps.allBuildingToggles.Values.FirstOrDefault(x => x != null);
-               if (pbt == null) return;
-
-               var bgT = pbt.transform.Find("BG");
-
-               // Sample states[0] (canonical enabled+unselected) — sampling
-               // the live Image.color picks up whichever MultiToggle state
-               // happens to be active, so a fresh save before anything's
-               // researched bakes the disabled style instead.
-               var mt = pbt.toggle;
-               if (mt != null && mt.states != null && mt.states.Length > 0) {
-                  var s0 = mt.states[0];
-                  _rowBgNormal = s0.color;
-                  if (s0.sprite != null) _rowBgSprite = s0.sprite;
-                  if (s0.use_color_on_hover) _rowBgHover = s0.color_on_hover;
-
-                  if (mt.states.Length > 2) {
-                     var s2 = mt.states[2];
-                     _rowBgDisabled = s2.color;
-                     if (s2.sprite != null) _rowBgDisabledSprite = s2.sprite;
-                  }
-
-                  if (mt.states.Length > 3) {
-                     var s3 = mt.states[3];
-                     _rowBgDisabledHover = s3.color;
-                  }
-               } else {
-                  var bgImg = bgT?.GetComponent<Image>();
-                  if (bgImg != null) {
-                     _rowBgNormal = bgImg.color;
-                     if (bgImg.sprite != null) _rowBgSprite = bgImg.sprite;
-                  }
-               }
-
-               var lbl = pbt.text_listView
-                         ?? bgT?.Find("NameLabel_ListView")?.GetComponent<TextMeshProUGUI>();
-               if (lbl != null) {
-                  _rowFont     = lbl.font;
-                  _rowFontSize = lbl.fontSize;
-                  _rowText     = lbl.color;
-               }
-
-               var listIcon = bgT?.Find("Image_ListView") as RectTransform;
-               if (listIcon != null) {
-                  _rowIconSize = Mathf.Max(listIcon.sizeDelta.x, listIcon.sizeDelta.y);
-               }
-
-               var fg = pbt.transform.Find("FG/ImageContainer/Image")?.GetComponent<Image>();
-               if (fg != null) {
-                  _rowNeedsTechColor = fg.color;
-                  if (fg.transform is RectTransform fgRT) _rowNeedsTechSize = fgRT.sizeDelta;
-               }
-            });
+            if (BuildingGroupScreen.Instance == null)
+               Debug.LogWarning("[Scope] Warmup: Click() returned but Instance still null (focus/EventSystem gate?).");
+         } catch (Exception ex) {
+            Debug.LogWarning($"[Scope] Warmup outer failure: {ex}");
          }
       }
 
-      private static void TryExtract(string what, System.Action a) {
-         try { a(); }
-         catch (Exception ex) { Debug.LogWarning($"[Scope] Failed to extract {what}: {ex.Message}"); }
+      #endregion
+
+      #region Debug
+
+      private static bool _dumped;
+
+      // Per-overlay-open diagnostic. First call: full hierarchy dump + token
+      // summary. Subsequent calls: token summary only. No-op when LogDebug
+      // is off. Cheap enough for the steady-state path (cached fields are
+      // simple field reads).
+      public static void LogPerOpen() {
+         if (!Mod.LogDebug) return;
+         if (!_dumped) { _dumped = true; DumpHierarchies(); }
+         LogResolvedTokens();
       }
 
-      // Compact token summary; Each line shows the resolved value and
-      // where it came from (extracted vs default).
-      //
-      // TODO: format to be copy-pasteable into ScopeUiDefaults.cs when
-      // we want to bake current game values.
-      private static void LogResolvedTokens() {
+      // Forces evaluation of every token; logs resolved values + extracted-vs-default per token.
+      public static void LogResolvedTokens() {
+         try { LogResolvedTokensInner(); }
+         catch (Exception ex) { Debug.LogWarning($"[Scope] Token log failed: {ex.Message}"); }
+      }
+
+      private static void LogResolvedTokensInner() {
          var sb = new StringBuilder();
-         sb.AppendLine("[Scope-Tokens] BEGIN  (paste into ScopeUiDefaults.cs to bake current game values)");
+         sb.AppendLine("[Scope-Tokens] BEGIN");
 
-         LogColor (sb, "HeaderBg",            _headerBg.HasValue,            HeaderBg);
-         LogFloat (sb, "HeaderHeight",        _headerHeight.HasValue,        HeaderHeight);
-         LogFont  (sb, "HeaderFont",          _headerFont != null,           HeaderFont);
-         LogFloat (sb, "HeaderFontSize",      _headerFontSize.HasValue,      HeaderFontSize);
-         LogColor (sb, "HeaderText",          _headerText.HasValue,          HeaderText);
+         LogColor (sb, "HeaderBg",            HeaderBg,            _headerBg.HasValue);
+         LogFloat (sb, "HeaderHeight",        HeaderHeight,        _headerHeight.HasValue);
+         LogFont  (sb, "HeaderFont",          HeaderFont,          _headerFont != null);
+         LogFloat (sb, "HeaderFontSize",      HeaderFontSize,      _headerFontSize.HasValue);
+         LogColor (sb, "HeaderText",          HeaderText,          _headerText.HasValue);
 
-         LogColor (sb, "SubheaderBg",         _subheaderBg.HasValue,         SubheaderBg);
-         LogFloat (sb, "SubheaderHeight",     _subheaderHeight.HasValue,     SubheaderHeight);
+         LogColor (sb, "SubheaderBg",         SubheaderBg,         _subheaderBg.HasValue);
+         LogFloat (sb, "SubheaderHeight",     SubheaderHeight,     _subheaderHeight.HasValue);
 
-         LogColor (sb, "InputBg",             _inputBg.HasValue,             InputBg);
-         LogFloat (sb, "InputHeight",         _inputHeight.HasValue,         InputHeight);
-         LogFont  (sb, "InputFont",           _inputFont != null,            InputFont);
-         LogFloat (sb, "InputFontSize",       _inputFontSize.HasValue,       InputFontSize);
-         LogColor (sb, "InputText",           _inputText.HasValue,           InputText);
-         LogColor (sb, "InputPlaceholder",    _inputPlaceholder.HasValue,    InputPlaceholder);
-         LogColor (sb, "ClearButtonBgColor",  _clearButtonBgColor.HasValue,  ClearButtonBgColor);
-         LogSprite(sb, "ClearButtonBgSprite", _clearButtonBgSprite != null,  ClearButtonBgSprite);
-         LogColor (sb, "ClearButtonFgColor",  _clearButtonFgColor.HasValue,  ClearButtonFgColor);
-         LogSprite(sb, "ClearButtonFgSprite", _clearButtonFgSprite != null,  ClearButtonFgSprite);
-         LogVec2  (sb, "ClearButtonFgInset",  _clearButtonFgInset.HasValue,  ClearButtonFgInset);
-         LogColor (sb, "PanelBgColor",        _panelBgColor.HasValue,        PanelBgColor);
-         LogSprite(sb, "PanelBgSprite",       _panelBgSprite != null,        PanelBgSprite);
+         LogColor (sb, "InputBg",             InputBg,             _inputBg.HasValue);
+         LogFloat (sb, "InputHeight",         InputHeight,         _inputHeight.HasValue);
+         LogFont  (sb, "InputFont",           InputFont,           _inputFont != null);
+         LogFloat (sb, "InputFontSize",       InputFontSize,       _inputFontSize.HasValue);
+         LogColor (sb, "InputText",           InputText,           _inputText.HasValue);
+         LogColor (sb, "InputPlaceholder",    InputPlaceholder,    _inputPlaceholder.HasValue);
+         LogColor (sb, "ClearButtonBgColor",  ClearButtonBgColor,  _clearButtonBgColor.HasValue);
+         LogSprite(sb, "ClearButtonBgSprite", ClearButtonBgSprite, _clearButtonBgSprite != null);
+         LogColor (sb, "ClearButtonFgColor",  ClearButtonFgColor,  _clearButtonFgColor.HasValue);
+         LogSprite(sb, "ClearButtonFgSprite", ClearButtonFgSprite, _clearButtonFgSprite != null);
+         LogVec2  (sb, "ClearButtonFgInset",  ClearButtonFgInset,  _clearButtonFgInset.HasValue);
+         LogColor (sb, "PanelBgColor",        PanelBgColor,        _panelBgColor.HasValue);
+         LogSprite(sb, "PanelBgSprite",       PanelBgSprite,       _panelBgSprite != null);
 
-         LogColor (sb, "BodyBg",              false,                         BodyBg);
+         LogColor (sb, "BodyBg",              BodyBg,              false);
 
-         LogFont  (sb, "SectionFont",         _sectionFont != null,          SectionFont);
-         LogFloat (sb, "SectionFontSize",     _sectionFontSize.HasValue,     SectionFontSize);
-         LogColor (sb, "SectionText",         _sectionText.HasValue,         SectionText);
-         LogColor (sb, "SectionRule",         _sectionRule.HasValue,         SectionRule);
-         LogFloat (sb, "SectionHeight",       _sectionHeight.HasValue,       SectionHeight);
-         LogFloat (sb, "SectionRuleHeight",   _sectionRuleHeight.HasValue,   SectionRuleHeight);
-         LogFloat (sb, "SectionBarLeftWidth", _sectionBarLeftWidth.HasValue, SectionBarLeftWidth);
-         LogVec2  (sb, "SectionArrowSize",    _sectionArrowSize.HasValue,    SectionArrowSize);
-         LogSprite(sb, "SectionBarSprite",    _sectionBarSprite != null,     SectionBarSprite);
-         LogSprite(sb, "SectionArrowSprite",  _sectionArrowSprite != null,   SectionArrowSprite);
+         LogFont  (sb, "SectionFont",         SectionFont,         _sectionFont != null);
+         LogFloat (sb, "SectionFontSize",     SectionFontSize,     _sectionFontSize.HasValue);
+         LogColor (sb, "SectionText",         SectionText,         _sectionText.HasValue);
+         LogColor (sb, "SectionRule",         SectionRule,         _sectionRule.HasValue);
+         LogFloat (sb, "SectionHeight",       SectionHeight,       _sectionHeight.HasValue);
+         LogFloat (sb, "SectionRuleHeight",   SectionRuleHeight,   _sectionRuleHeight.HasValue);
+         LogFloat (sb, "SectionBarLeftWidth", SectionBarLeftWidth, _sectionBarLeftWidth.HasValue);
+         LogVec2  (sb, "SectionArrowSize",    SectionArrowSize,    _sectionArrowSize.HasValue);
+         LogSprite(sb, "SectionBarSprite",    SectionBarSprite,    _sectionBarSprite != null);
+         LogSprite(sb, "SectionArrowSprite",  SectionArrowSprite,  _sectionArrowSprite != null);
 
-         LogFloat (sb, "RowHeight",           false,                         RowHeight);
-         LogColor (sb, "RowBgNormal",         _rowBgNormal.HasValue,         RowBgNormal);
-         LogColor (sb, "RowBgHover",          _rowBgHover.HasValue,          RowBgHover);
-         LogColor (sb, "RowBgDisabled",       _rowBgDisabled.HasValue,       RowBgDisabled);
-         LogColor (sb, "RowBgDisabledHover",  _rowBgDisabledHover.HasValue,  RowBgDisabledHover);
-         LogSprite(sb, "RowBgSprite",         _rowBgSprite != null,          RowBgSprite);
-         LogSprite(sb, "RowBgDisabledSprite", _rowBgDisabledSprite != null,  RowBgDisabledSprite);
-         LogFont  (sb, "RowFont",             _rowFont != null,              RowFont);
-         LogFloat (sb, "RowFontSize",         _rowFontSize.HasValue,         RowFontSize);
-         LogColor (sb, "RowText",             _rowText.HasValue,             RowText);
-         LogFloat (sb, "RowIconSize",         false,                         RowIconSize);
-         LogMat   (sb, "RowIconMaterial",     _rowIconMaterial != null,      RowIconMaterial);
-         LogMat   (sb, "RowIconDisabledMaterial", _rowIconDisabledMaterial != null, RowIconDisabledMaterial);
-         LogSprite(sb, "RowNeedsTechSprite",  _rowNeedsTechSprite != null,   RowNeedsTechSprite);
-         LogColor (sb, "RowNeedsTechColor",   _rowNeedsTechColor.HasValue,   RowNeedsTechColor);
-         LogVec2  (sb, "RowNeedsTechSize",    _rowNeedsTechSize.HasValue,    RowNeedsTechSize);
+         LogFloat (sb, "RowHeight",           RowHeight,           false);
+         LogColor (sb, "RowBgNormal",         RowBgNormal,         _rowBgNormal.HasValue);
+         LogColor (sb, "RowBgHover",          RowBgHover,          _rowBgHover.HasValue);
+         LogColor (sb, "RowBgDisabled",       RowBgDisabled,       _rowBgDisabled.HasValue);
+         LogColor (sb, "RowBgDisabledHover",  RowBgDisabledHover,  _rowBgDisabledHover.HasValue);
+         LogSprite(sb, "RowBgSprite",         RowBgSprite,         _rowBgSprite != null);
+         LogSprite(sb, "RowBgDisabledSprite", RowBgDisabledSprite, _rowBgDisabledSprite != null);
+         LogFont  (sb, "RowFont",             RowFont,             _rowFont != null);
+         LogFloat (sb, "RowFontSize",         RowFontSize,         _rowFontSize.HasValue);
+         LogColor (sb, "RowText",             RowText,             _rowText.HasValue);
+         LogFloat (sb, "RowIconSize",         RowIconSize,         _rowIconSize.HasValue);
+         LogMat   (sb, "RowIconMaterial",     RowIconMaterial,     _rowIconMaterial != null);
+         LogMat   (sb, "RowIconDisabledMaterial", RowIconDisabledMaterial, _rowIconDisabledMaterial != null);
+         LogSprite(sb, "RowNeedsTechSprite",  RowNeedsTechSprite,  _rowNeedsTechSprite != null);
+         LogColor (sb, "RowNeedsTechColor",   RowNeedsTechColor,   _rowNeedsTechColor.HasValue);
+         LogVec2  (sb, "RowNeedsTechSize",    RowNeedsTechSize,    _rowNeedsTechSize.HasValue);
 
-         LogFloat (sb, "ScrollbarWidth",         _scrollbarWidth.HasValue,         ScrollbarWidth);
-         LogColor (sb, "ScrollbarTrackColor",    _scrollbarTrackColor.HasValue,    ScrollbarTrackColor);
-         LogSprite(sb, "ScrollbarTrackSprite",   _scrollbarTrackSprite != null,    ScrollbarTrackSprite);
-         LogColor (sb, "ScrollbarHandleColor",   _scrollbarHandleColor.HasValue,   ScrollbarHandleColor);
-         LogSprite(sb, "ScrollbarHandleSprite",  _scrollbarHandleSprite != null,   ScrollbarHandleSprite);
-         LogVec2  (sb, "ScrollbarHandleInset",   _scrollbarHandleInset.HasValue,   ScrollbarHandleInset);
+         LogFloat (sb, "ScrollbarWidth",         ScrollbarWidth,         _scrollbarWidth.HasValue);
+         LogColor (sb, "ScrollbarTrackColor",    ScrollbarTrackColor,    _scrollbarTrackColor.HasValue);
+         LogSprite(sb, "ScrollbarTrackSprite",   ScrollbarTrackSprite,   _scrollbarTrackSprite != null);
+         LogColor (sb, "ScrollbarHandleColor",   ScrollbarHandleColor,   _scrollbarHandleColor.HasValue);
+         LogSprite(sb, "ScrollbarHandleSprite",  ScrollbarHandleSprite,  _scrollbarHandleSprite != null);
+         LogVec2  (sb, "ScrollbarHandleInset",   ScrollbarHandleInset,   _scrollbarHandleInset.HasValue);
 
-         LogFloat (sb, "ScrollElasticity",       _scrollElasticity.HasValue,       ScrollElasticity);
-         LogFloat (sb, "ScrollSensitivity",      _scrollSensitivity.HasValue,      ScrollSensitivity);
-         LogFloat (sb, "ScrollDecelerationRate", _scrollDecelerationRate.HasValue, ScrollDecelerationRate);
-         LogBool  (sb, "ScrollInertia",          _scrollInertia.HasValue,          ScrollInertia);
+         LogFloat (sb, "ScrollElasticity",       ScrollElasticity,       _scrollElasticity.HasValue);
+         LogFloat (sb, "ScrollSensitivity",      ScrollSensitivity,      _scrollSensitivity.HasValue);
+         LogFloat (sb, "ScrollDecelerationRate", ScrollDecelerationRate, _scrollDecelerationRate.HasValue);
+         LogBool  (sb, "ScrollInertia",          ScrollInertia,          _scrollInertia.HasValue);
 
          sb.AppendLine("[Scope-Tokens] END");
          Debug.Log(sb.ToString());
       }
 
-      private static void LogColor(StringBuilder sb, string name, bool extracted, Color c) {
-         var src = extracted ? "extracted" : "default";
+      private static void LogColor(StringBuilder sb, string name, Color c, bool extracted) {
          var c32 = (Color32)c;
          sb.AppendLine(
             $"[Scope-Tokens] {name,-22} = new Color32({c32.r,3}, {c32.g,3}, {c32.b,3}, {c32.a,3})"
-            + $"  // #{ColorUtility.ToHtmlStringRGBA(c)} ({src})"
-         );
+            + $"  // #{ColorUtility.ToHtmlStringRGBA(c)} ({(extracted ? "extracted" : "default")})");
       }
-      private static void LogFloat(StringBuilder sb, string name, bool extracted, float v) {
-         var src = extracted ? "extracted" : "default";
-         sb.AppendLine($"[Scope-Tokens] {name,-22} = {v}f;  // ({src})");
-      }
-      private static void LogBool(StringBuilder sb, string name, bool extracted, bool v) {
-         var src = extracted ? "extracted" : "default";
-         sb.AppendLine($"[Scope-Tokens] {name,-22} = {(v ? "true" : "false")};  // ({src})");
-      }
-      private static void LogVec2(StringBuilder sb, string name, bool extracted, Vector2 v) {
-         var src = extracted ? "extracted" : "default";
-         sb.AppendLine($"[Scope-Tokens] {name,-22} = new Vector2({v.x}f, {v.y}f);  // ({src})");
-      }
-      private static void LogFont(StringBuilder sb, string name, bool extracted, TMP_FontAsset f) {
-         var src = extracted ? "extracted" : "default (PLib)";
-         var n = f != null ? f.name : "<null>";
-         sb.AppendLine($"[Scope-Tokens] {name,-22} = {n}  // ({src})");
-      }
-      private static void LogMat(StringBuilder sb, string name, bool extracted, Material m) {
-         var src = extracted ? "extracted" : "default (null)";
-         var n = m != null ? m.name : "<null>";
-         sb.AppendLine($"[Scope-Tokens] {name,-22} = {n}  // ({src})");
-      }
-      private static void LogSprite(StringBuilder sb, string name, bool extracted, Sprite s) {
-         var src = extracted ? "extracted" : "default (null)";
-         var n = s != null ? s.name : "<null>";
-         sb.AppendLine($"[Scope-Tokens] {name,-22} = {n}  // ({src})");
-      }
+      private static void LogFloat(StringBuilder sb, string name, float v, bool extracted)
+         => sb.AppendLine($"[Scope-Tokens] {name,-22} = {v}f;  // ({(extracted ? "extracted" : "default")})");
+      private static void LogBool(StringBuilder sb, string name, bool v, bool extracted)
+         => sb.AppendLine($"[Scope-Tokens] {name,-22} = {(v ? "true" : "false")};  // ({(extracted ? "extracted" : "default")})");
+      private static void LogVec2(StringBuilder sb, string name, Vector2 v, bool extracted)
+         => sb.AppendLine($"[Scope-Tokens] {name,-22} = new Vector2({v.x}f, {v.y}f);  // ({(extracted ? "extracted" : "default")})");
+      private static void LogFont(StringBuilder sb, string name, TMP_FontAsset f, bool extracted)
+         => sb.AppendLine($"[Scope-Tokens] {name,-22} = {(f != null ? f.name : "<null>")}  // ({(extracted ? "extracted" : "default (PLib)")})");
+      private static void LogMat(StringBuilder sb, string name, Material m, bool extracted)
+         => sb.AppendLine($"[Scope-Tokens] {name,-22} = {(m != null ? m.name : "<null>")}  // ({(extracted ? "extracted" : "default (null)")})");
+      private static void LogSprite(StringBuilder sb, string name, Sprite s, bool extracted)
+         => sb.AppendLine($"[Scope-Tokens] {name,-22} = {(s != null ? s.name : "<null>")}  // ({(extracted ? "extracted" : "default (null)")})");
 
-      // One-shot debug dump. Logged once per game session on first
-      // extraction so the user can paste it back to refine extraction
-      // paths.
+      // Hierarchy dump for tracking down a renamed Klei path.
       public static void DumpHierarchies() {
-         var sb = new StringBuilder();
-         sb.AppendLine("[Scope-UI-Dump] BEGIN");
-         var ps = PlanScreen.Instance;
-         if (ps != null) {
-            sb.AppendLine("[Scope-UI-Dump] --- PlanScreen ---");
-            DumpRec(ps.transform, 0, sb);
-         } else {
-            sb.AppendLine("[Scope-UI-Dump] PlanScreen.Instance == null");
+         try {
+            var sb = new StringBuilder();
+            sb.AppendLine("[Scope-UI-Dump] BEGIN");
+            var ps = PlanScreen.Instance;
+            if (ps != null) { sb.AppendLine("[Scope-UI-Dump] --- PlanScreen ---"); DumpRec(ps.transform, 0, sb); }
+            else             sb.AppendLine("[Scope-UI-Dump] PlanScreen.Instance == null");
+            var bgs = BuildingGroupScreen.Instance;
+            if (bgs != null) { sb.AppendLine("[Scope-UI-Dump] --- BuildingGroupScreen ---"); DumpRec(bgs.transform, 0, sb); }
+            else              sb.AppendLine("[Scope-UI-Dump] BuildingGroupScreen.Instance == null");
+            sb.AppendLine("[Scope-UI-Dump] END");
+            Debug.Log(sb.ToString());
+         } catch (Exception ex) {
+            Debug.LogWarning($"[Scope] Hierarchy dump failed: {ex.Message}");
          }
-         var bgs = BuildingGroupScreen.Instance;
-         if (bgs != null) {
-            sb.AppendLine("[Scope-UI-Dump] --- BuildingGroupScreen ---");
-            DumpRec(bgs.transform, 0, sb);
-         } else {
-            sb.AppendLine("[Scope-UI-Dump] BuildingGroupScreen.Instance == null");
-         }
-         sb.AppendLine("[Scope-UI-Dump] END");
-         Debug.Log(sb.ToString());
       }
 
       private static void DumpRec(Transform t, int depth, StringBuilder sb) {
          if (t == null) return;
-         var indent = new string(' ', depth * 2);
-         sb.Append("[Scope-UI-Dump] ").Append(indent).Append(t.name);
-
-         if (t is RectTransform rt) sb.Append($" rect={rt.sizeDelta}");
-
+         sb.Append("[Scope-UI-Dump] ").Append(new string(' ', depth * 2)).Append(t.name);
+         if (t is RectTransform rt) {
+            sb.Append($" sizeDelta={rt.sizeDelta} rect={rt.rect.size}");
+            var le = rt.GetComponent<LayoutElement>();
+            if (le != null) sb.Append($" LE[pref=({le.preferredWidth},{le.preferredHeight}) min=({le.minWidth},{le.minHeight})]");
+         }
          var img = t.GetComponent<Image>();
-         if (img != null) {
-            var sprite = img.sprite != null ? img.sprite.name : "<null>";
-            sb.Append($" Image[color=#{ColorUtility.ToHtmlStringRGBA(img.color)} sprite={sprite}]");
-         }
-
+         if (img != null)
+            sb.Append($" Image[color=#{ColorUtility.ToHtmlStringRGBA(img.color)} sprite={(img.sprite != null ? img.sprite.name : "<null>")}]");
          var tmp = t.GetComponent<TextMeshProUGUI>();
-         if (tmp != null) {
-            var fontName = tmp.font != null ? tmp.font.name : "<null>";
-            sb.Append($" TMP[font={fontName} size={tmp.fontSize} color=#{ColorUtility.ToHtmlStringRGBA(tmp.color)}]");
-         }
-
+         if (tmp != null)
+            sb.Append($" TMP[font={(tmp.font != null ? tmp.font.name : "<null>")} size={tmp.fontSize} color=#{ColorUtility.ToHtmlStringRGBA(tmp.color)}]");
          sb.AppendLine();
-
-         // Bound depth — these trees can be deep; 8 is enough to find the
-         // visually-meaningful nodes without flooding logs.
          if (depth >= 8) return;
          for (int i = 0; i < t.childCount; i++) DumpRec(t.GetChild(i), depth + 1, sb);
       }
+
+      #endregion
+   }
+
+   internal static class UnityExt {
+      // Unity overloads `==` on UE.Object to detect destroyed-but-not-GC'd refs;
+      // `?.` doesn't, so `obj?.x` reads `x` off a "dead" reference. `.Live()` converts
+      // the fake-null to real null so subsequent `?.` short-circuits correctly.
+      internal static T Live<T>(this T x) where T : UnityEngine.Object => x == null ? null : x;
    }
 }

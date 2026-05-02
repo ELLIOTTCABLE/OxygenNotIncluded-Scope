@@ -39,9 +39,11 @@ namespace ScopeMod {
 
         public static void Open() {
             if (liveInstance != null) {
+                Mod.Log("[Scope] Open() — refocusing live instance.");
                 liveInstance.FocusInput();
                 return;
             }
+            Mod.Log("[Scope] Open() — creating overlay.");
             var parent = GameScreenManager.Instance.GetParent(
                 GameScreenManager.UIRenderTarget.ScreenSpaceOverlay);
             // GraphicRaycaster is required alongside the Canvas — without it,
@@ -146,6 +148,7 @@ namespace ScopeMod {
         }
 
         private void SubmitAction(IQuickAction picked) {
+            Mod.Log($"[Scope] Submit: {picked?.DisplayName ?? "<null>"}");
             // Defer invocation past Input.anyKeyDown so Klei's KeyDown event
             // doesn't fall through to game hotkeys. Hosted on a persistent
             // GameObject because we're about to Destroy ourselves.
@@ -190,11 +193,15 @@ namespace ScopeMod {
         }
 
         private void BuildUI() {
-            // Attempt to pull live values off PlanScreen /
-            // BuildingGroupScreen now — they're populated once a save
-            // is loaded, and the user has to be in-game for
-            // ScopeOverlay.Open() to fire.
-            OniUiTokens.EnsureExtracted();
+            // Force-open the first build category so BuildingGroupScreen gets
+            // instantiated. See OniUiTokens.Warmup() for full rationale. Tokens
+            // are also lazy + retried per access, so a failed warmup is
+            // recoverable on subsequent overlay-opens.
+            bool wasHydrated = BuildingGroupScreen.Instance != null;
+            OniUiTokens.Warmup();
+            bool isHydrated = BuildingGroupScreen.Instance != null;
+            Mod.Log($"[Scope] BuildUI: BuildingGroupScreen hydrated before/after warmup = {wasHydrated}/{isHydrated}.");
+            OniUiTokens.LogPerOpen();
 
             var border = gameObject.AddComponent<Image>();
             border.sprite = OniUiTokens.PanelBgSprite ?? PUITuning.Images.BoxBorder;
@@ -327,8 +334,9 @@ namespace ScopeMod {
 
             var clearBg = clearGo.GetComponent<Image>();
             clearBg.color = OniUiTokens.ClearButtonBgColor;
-            if (OniUiTokens.ClearButtonBgSprite != null) {
-                clearBg.sprite = OniUiTokens.ClearButtonBgSprite;
+            var bgSprite = OniUiTokens.ClearButtonBgSprite;
+            if (bgSprite != null) {
+                clearBg.sprite = bgSprite;
                 clearBg.type = Image.Type.Sliced;
             }
 
@@ -339,32 +347,43 @@ namespace ScopeMod {
                 FocusInput();
             });
 
-            var fgGo = new GameObject("FG", typeof(RectTransform), typeof(Image));
+            // Decide Image-vs-TMP up-front: Unity allows only one Graphic per
+            // GameObject, and the recycle (add Image → Destroy → add TMP)
+            // returns null because Destroy is deferred to end-of-frame.
+            var fgSprite = OniUiTokens.ClearButtonFgSprite;
+
+            var fgGo = new GameObject("FG", typeof(RectTransform));
             fgGo.transform.SetParent(clearGo.transform, worldPositionStays: false);
-            var fgImage = fgGo.GetComponent<Image>();
-            fgImage.raycastTarget = false;
-            fgImage.color = OniUiTokens.ClearButtonFgColor;
-            fgImage.sprite = OniUiTokens.ClearButtonFgSprite;
-            fgImage.preserveAspect = true;
 
             var lrt = (RectTransform)fgGo.transform;
             lrt.anchorMin = Vector2.zero;
             lrt.anchorMax = Vector2.one;
-            var fgPadding = new Vector2(
-                Mathf.Abs(OniUiTokens.ClearButtonFgInset.x) * 0.5f,
-                Mathf.Abs(OniUiTokens.ClearButtonFgInset.y) * 0.5f);
+            var fgInset = OniUiTokens.ClearButtonFgInset;
+            var fgPadding = new Vector2(Mathf.Abs(fgInset.x) * 0.5f, Mathf.Abs(fgInset.y) * 0.5f);
             lrt.offsetMin = fgPadding;
             lrt.offsetMax = -fgPadding;
 
-            if (fgImage.sprite == null) {
-                UnityEngine.Object.Destroy(fgImage);
-
+            if (fgSprite != null) {
+                var fgImage = fgGo.AddComponent<Image>();
+                fgImage.raycastTarget   = false;
+                fgImage.color           = OniUiTokens.ClearButtonFgColor;
+                fgImage.sprite          = fgSprite;
+                fgImage.preserveAspect  = true;
+            } else {
+                // Visible-but-not-fatal degraded path: extraction missed the
+                // cancel sprite, falling back to a TMP "X" glyph.
+                Mod.Log("[Scope] ClearButton FG fallback: no sprite extracted, using TMP X glyph.");
                 var label = fgGo.AddComponent<TextMeshProUGUI>();
-                label.font = OniUiTokens.InputFont;
-                label.fontSize = 16f;
-                label.color = OniUiTokens.InputText;
-                label.alignment = TextAlignmentOptions.Center;
-                label.text = "X";
+                if (label != null) {
+                    var inputFont = OniUiTokens.InputFont;
+                    if (inputFont != null) label.font = inputFont;
+                    label.fontSize  = 16f;
+                    label.color     = OniUiTokens.InputText;
+                    label.alignment = TextAlignmentOptions.Center;
+                    label.text      = "X";
+                } else {
+                    Debug.LogWarning("[Scope] ClearButton FG fallback: AddComponent<TMP> returned null; clear button has no glyph.");
+                }
             }
         }
 
