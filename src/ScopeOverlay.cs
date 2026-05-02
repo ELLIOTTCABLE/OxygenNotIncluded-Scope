@@ -144,6 +144,11 @@ namespace ScopeMod {
             }
 
             var picked = visibleRows[Mathf.Clamp(highlighted, 0, visibleRows.Count - 1)].Action;
+            // Invariant: <enter> only closes Scope in order to execute some useful task; never on failure.
+            if (!picked.CanInvoke) {
+                Mod.Log($"[Scope] Submit blocked (CanInvoke=false): {picked.DisplayName}");
+                return;
+            }
             SubmitAction(picked);
         }
 

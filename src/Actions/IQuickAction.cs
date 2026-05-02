@@ -15,6 +15,10 @@ namespace ScopeMod {
         // User-facing subcategory title shown in section headers.
         string SubcategoryTitle { get; }
 
+        // Synchronous "would Submit actually do something?" check. False means Submit no-ops:
+        // the overlay stays open (matching no-result behavior) instead of dismissing on a dud.
+        bool CanInvoke { get; }
+
         // Called after the overlay has been dismissed and after Input.anyKeyDown has cleared
         // (so Klei's KeyDown event has settled and won't bleed into game hotkeys).
         void Invoke();
