@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using PeterHan.PLib.UI;
+using ScopeMod.Mru;
 using ScopeMod.UI;
 using TMPro;
 using UnityEngine;
@@ -18,17 +20,47 @@ namespace ScopeMod
 
       private static ScopeOverlay liveInstance;
 
+      // Path follows the PLib POptions convention
+      // (...\Documents\Klei\OxygenNotIncluded\mods\config\<mod>\) so we
+      // land alongside any options-state.
+      private static MruStore mruStore;
+      private static MruStore Mru
+      {
+         get
+         {
+            if (mruStore != null)
+               return mruStore;
+            Action<string> warn = msg => Debug.LogWarning($"[Scope] {msg}");
+            try
+            {
+               var path = Path.Combine(
+                  KMod.Manager.GetDirectory(),
+                  "config",
+                  "ScopeMod",
+                  "scope-mru.json"
+               );
+               mruStore = MruStore.ForFile(path, warn: warn);
+               mruStore.Load();
+            }
+            catch (Exception ex)
+            {
+               warn($"MRU init failed; running without persistence: {ex.Message}");
+               // In-memory-only fallback so call sites don't need null-checks.
+               mruStore = new MruStore(loader: () => "", saver: _ => { }, warn: warn);
+            }
+            return mruStore;
+         }
+      }
+
       private TMP_InputField inputField;
       private RectTransform sectionsContent;
       private GameObject emptyState;
       private bool suppressEndEditHandling;
-      private readonly List<SectionWidget> sections = new List<SectionWidget>(32);
-      private readonly List<RowWidget> visibleRows = new List<RowWidget>(MAX_RESULTS);
-      private readonly Dictionary<string, bool> expandedSections = new Dictionary<string, bool>(
-         StringComparer.Ordinal
-      );
+      private readonly List<SectionWidget> sections = new(32);
+      private readonly List<RowWidget> visibleRows = new(MAX_RESULTS);
+      private readonly Dictionary<string, bool> expandedSections = new(StringComparer.Ordinal);
 
-      private List<RankedResult> currentResults = new List<RankedResult>(MAX_RESULTS);
+      private List<RankedResult> currentResults = new(MAX_RESULTS);
       private int highlighted;
       private List<IQuickAction> allActions;
       private float nextStateRefreshAt;
@@ -199,6 +231,15 @@ namespace ScopeMod
       private void SubmitAction(IQuickAction picked)
       {
          Mod.Log($"[Scope] Submit: {picked?.DisplayName ?? "<null>"}");
+
+         // Best-effort: MruStore logs but doesn't throw on disk failure.
+         var key = picked?.MruKey;
+         if (!string.IsNullOrEmpty(key))
+         {
+            Mru.Record(key);
+            Mru.Save();
+         }
+
          // Defer invocation past Input.anyKeyDown so Klei's KeyDown event
          // doesn't fall through to game hotkeys. Hosted on a persistent
          // GameObject because we're about to Destroy ourselves.
@@ -222,7 +263,7 @@ namespace ScopeMod
 
       private void UpdateResults(string query)
       {
-         currentResults = ScopeSearch.Rank(query, allActions, MAX_RESULTS);
+         currentResults = ScopeSearch.Rank(query, allActions, MAX_RESULTS, Mru);
          RebuildSections();
       }
 
