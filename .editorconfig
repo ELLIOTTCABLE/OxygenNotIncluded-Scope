@@ -1,0 +1,17 @@
+[*.{cs,csx}]
+# Csharpier demands:
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# Csharpier config:
+indent_style = space
+indent_size = 3
+max_line_length = 100
+
+[*.{config,csproj,props,slnx,targets,xaml,xml}]
+indent_style = space
+indent_size = 3
+max_line_length = 100

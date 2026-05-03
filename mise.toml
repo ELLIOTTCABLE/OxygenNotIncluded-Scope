@@ -1,0 +1,9 @@
+[env]
+HK_MISE = 1
+
+[tools]
+dotnet = "latest"
+"dotnet:csharpier" = "latest"
+hk = "latest"
+pkl = "latest"
+taplo = "latest"
