@@ -1,9 +1,35 @@
 [env]
 HK_MISE = 1
 
+[hooks]
+postinstall = "hk install --mise"
+
 [tools]
-dotnet = "latest"
+dotnet = "8"
 "dotnet:csharpier" = "latest"
+"dotnet:JetBrains.Refasmer.CliTool" = "latest"
+
 hk = "latest"
 pkl = "latest"
 taplo = "latest"
+
+[tasks.fix]
+description = "Apply all hk steps (formatters fix; drift-guards surface and abort)."
+run = "hk fix --all"
+
+[tasks.test]
+description = "Run xunit tests."
+run = "dotnet test tests/ScopeMod.Tests.csproj"
+
+[tasks.refasm-libs]
+description = "Regenerate `lib` ref assemblies from local ONI install (commit the result)."
+run = "powershell -NoProfile -File scripts/refasm-libs.ps1"
+
+# Pre-commit guard: regenerates `lib`, then exits non-zero if the working tree
+# picked up changes. Not a 'check' in the read-only sense — it's a
+# fix-then-assert. Used by hk to block commits when `LastWorkingBuild` bumps
+# without an accompanying `lib` refresh.
+[tasks."refasm-libs:guard"]
+description = "Regenerate `lib`, then fail if it changed (pre-commit drift guard)."
+depends = ["refasm-libs"]
+run = 'powershell -NoProfile -Command "$d = git status --porcelain -- lib; if ($d) { Write-Host $d; exit 1 }"'

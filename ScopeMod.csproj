@@ -8,9 +8,6 @@
          disambiguate in a codebase. -->
       <Title>Scope</Title>
       <Description>Satisfactory/Discord/VScode-style command palette for Oxygen Not Included.</Description>
-      <FileVersion>0.1.0.0</FileVersion>
-      <AssemblyVersion>0.1.0.0</AssemblyVersion>
-      <Version>0.1.0</Version>
    </PropertyGroup>
 
    <!-- The SDK glob would otherwise pull tests/*.cs into the main mod

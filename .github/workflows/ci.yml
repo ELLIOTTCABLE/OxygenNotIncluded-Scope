@@ -1,0 +1,56 @@
+name: CI
+
+on:
+   push:
+      branches: [main]
+   pull_request:
+      branches: [main]
+
+concurrency:
+   group: ci-${{ github.ref }}
+   cancel-in-progress: true
+
+jobs:
+   test:
+      name: Test (xunit)
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@v4
+         - uses: jdx/mise-action@v4
+           with:
+              install: true
+              cache: true
+
+         # tests/Directory.Build.{props,targets} blocks needing Klei DLLs.
+         - name: Test
+           run: mise run test
+
+   build:
+      name: Build (mod)
+      runs-on: windows-latest
+      steps:
+         - uses: actions/checkout@v4
+           with:
+              fetch-depth: 0 # tooling needs full history
+         - uses: jdx/mise-action@v4
+           with:
+              install: true
+              cache: true
+
+         - name: Verify lib/ exists
+           shell: pwsh
+           run: |
+              if (-not (Test-Path 'lib/Assembly-CSharp.dll')) {
+                 Write-Error "lib/ is empty. Run 'mise run refasm-libs' locally and commit lib/ — see README.md."
+                 exit 1
+              }
+
+         - name: Build Release
+           run: dotnet build ScopeMod.csproj -c Release -p:GameFolder=${{ github.workspace }}\Lib
+
+         - name: Upload artifact
+           uses: actions/upload-artifact@v4
+           with:
+              name: ScopeMod-${{ github.sha }}
+              path: Release/ScopeMod/
+              if-no-files-found: error

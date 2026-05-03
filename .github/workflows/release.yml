@@ -1,0 +1,63 @@
+name: Release
+
+on:
+   push:
+      tags:
+         - "v*"
+
+permissions:
+   contents: write
+
+jobs:
+   release:
+      name: Build and publish
+      runs-on: windows-latest
+      steps:
+         - uses: actions/checkout@v4
+           with:
+              fetch-depth: 0 # tooling needs full history
+
+         - uses: jdx/mise-action@v4
+           with:
+              install: true
+              cache: true
+
+         - name: Verify lib/ exists
+           shell: pwsh
+           run: |
+              if (-not (Test-Path 'lib/Assembly-CSharp.dll')) {
+                 Write-Error "lib/ is empty. Run 'mise run refasm-libs' locally and commit lib/ before tagging."
+                 exit 1
+              }
+
+         - name: Build Release
+           run: dotnet build ScopeMod.csproj -c Release -p:GameFolder=${{ github.workspace }}\lib
+
+         - name: Package zip
+           id: zip
+           shell: pwsh
+           run: |
+              $name = "ScopeMod-${{ github.ref_name }}.zip"
+              Compress-Archive -Path Release/ScopeMod -DestinationPath $name
+              "path=$name" >> $env:GITHUB_OUTPUT
+
+         - name: Read tag annotation
+           shell: pwsh
+           run: |
+              $tag = '${{ github.ref_name }}'
+              '' | Set-Content release-notes.md -Encoding utf8 -NoNewline
+              $objType = (git for-each-ref --format='%(objecttype)' "refs/tags/$tag").Trim()
+              if ($objType -eq 'tag') {
+                 git tag -l --format='%(contents)' $tag | Set-Content release-notes.md -Encoding utf8
+              }
+
+         - name: Create GitHub release
+           uses: softprops/action-gh-release@v2
+           with:
+              name: Scope ${{ github.ref_name }}
+              tag_name: ${{ github.ref_name }}
+              files: ${{ steps.zip.outputs.path }}
+              body_path: release-notes.md
+              fail_on_unmatched_files: true
+              draft: true
+              prerelease: false

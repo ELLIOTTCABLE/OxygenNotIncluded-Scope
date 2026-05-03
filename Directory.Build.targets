@@ -6,7 +6,10 @@
       </ItemGroup>
    </Target>
 
-   <Target Name="WriteModInfoFile" BeforeTargets="PreBuildEvent">
+   <!-- DependsOnTargets="MinVer" forces MinVer to set $(Version) before we read
+      it; MinVer's own hook (GetAssemblyVersion) otherwise fires after our
+      PreBuildEvent slot. -->
+   <Target Name="WriteModInfoFile" BeforeTargets="PreBuildEvent" DependsOnTargets="MinVer">
       <PropertyGroup>
          <ModInfoFile>$(IntermediateOutputPath)\mod_info.yaml</ModInfoFile>
       </PropertyGroup>
@@ -33,8 +36,8 @@
       <WriteLinesToFile File="$(ModFile)" Overwrite="true" Lines="@(ModLines)" />
    </Target>
 
-   <!-- NOTE: do NOT pass Internalize="true" — would break PLib's reflection-based
-       [PLibMethod] discovery and version-forwarding. -->
+   <!-- NOTE: no Internalize="true"; breaks PLib's reflection-based
+      [PLibMethod] discovery and ver-forwarding. -->
    <Target Name="ILRepackMerge" AfterTargets="Build">
       <ItemGroup>
          <_MergeInputs Include="$(TargetPath)" />
