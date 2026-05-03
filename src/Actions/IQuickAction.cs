@@ -36,5 +36,15 @@ namespace ScopeMod
 
       // Optional suffix for demoted section title (e.g. "unresearched").
       string SearchDemotionSuffix { get; }
+
+      // Stable identifier used by the MRU store to bias ordering toward
+      // repeated user choices. Null = don't track (one-off / non-repeatable
+      // actions like a calc result). Should be stable across game sessions
+      // (i.e. survive serialize→deserialize).
+      //
+      // Convention: "<provider>:<id>" — e.g. "building:LadderConfig". The
+      // prefix prevents collisions if a future provider happens to use a
+      // bare identifier that overlaps.
+      string MruKey { get; }
    }
 }

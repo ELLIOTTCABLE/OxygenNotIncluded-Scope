@@ -48,6 +48,7 @@ namespace ScopeMod
       public int SearchDemotionTier => IsCurrentlyAvailable ? 0 : 1;
       public string SearchDemotionSuffix =>
          requirementsState == PlanScreen.RequirementsState.Tech ? "unresearched" : "unavailable";
+      public string MruKey => "building:" + def.PrefabID;
       public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
       public void Invoke()
