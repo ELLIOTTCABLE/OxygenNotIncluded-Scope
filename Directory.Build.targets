@@ -36,9 +36,12 @@
       <WriteLinesToFile File="$(ModFile)" Overwrite="true" Lines="@(ModLines)" />
    </Target>
 
-   <!-- NOTE: no Internalize="true"; breaks PLib's reflection-based
-      [PLibMethod] discovery and ver-forwarding. -->
-   <Target Name="ILRepackMerge" AfterTargets="Build">
+   <!-- Named "ILRepack" deliberately to override the same-named target the
+      ILRepack.Lib.MSBuild.Task package auto-imports in Release mode.
+
+      NOTE: no Internalize="true"; breaks PLib's reflection-based [PLibMethod]
+      discovery and ver-forwarding. -->
+   <Target Name="ILRepack" AfterTargets="Build">
       <ItemGroup>
          <_MergeInputs Include="$(TargetPath)" />
          <_MergeInputs Include="$(TargetDir)PLib*.dll" />
@@ -52,7 +55,7 @@
       />
    </Target>
 
-   <Target Name="CopyArtifactsToInstallFolder" AfterTargets="ILRepackMerge">
+   <Target Name="CopyArtifactsToInstallFolder" AfterTargets="ILRepack">
       <PropertyGroup>
          <InstallFolder Condition=" '$(Configuration)' == 'Debug' "
             >$(ModFolder)\ScopeMod</InstallFolder
