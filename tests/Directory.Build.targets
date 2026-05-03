@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Empty <Project/> stops MSBuild's upward walk.
+   Avoids the repo-root props that pull in PLib, Harmony, Krafs.Publicizer, game-DLLs, etc.
+-->
+<Project></Project>

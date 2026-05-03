@@ -3,12 +3,24 @@
    <PropertyGroup>
       <AssemblyTitle>ScopeMod</AssemblyTitle>
       <RootNamespace>ScopeMod</RootNamespace>
-      <!-- Title is user-visible (rendered in ONI's mod manager via mod.yaml).
-         Keep as "Scope" — it's the product name; ScopeMod is internal-only. -->
+      <!-- User-visible title is "Scope"; I'm just using "ScopeMod"
+         internally because "Scope" is like the worst term ever to
+         disambiguate in a codebase. -->
       <Title>Scope</Title>
       <Description>Satisfactory/Discord/VScode-style command palette for Oxygen Not Included.</Description>
       <FileVersion>0.1.0.0</FileVersion>
       <AssemblyVersion>0.1.0.0</AssemblyVersion>
       <Version>0.1.0</Version>
    </PropertyGroup>
+
+   <!-- The SDK glob would otherwise pull tests/*.cs into the main mod
+      compile. Test sources live in their own project (see
+      tests/ScopeMod.Tests.csproj), which links the pure-logic source
+      files we want to share. -->
+   <ItemGroup>
+      <Compile Remove="tests/**" />
+      <None Remove="tests/**" />
+      <Content Remove="tests/**" />
+      <EmbeddedResource Remove="tests/**" />
+   </ItemGroup>
 </Project>

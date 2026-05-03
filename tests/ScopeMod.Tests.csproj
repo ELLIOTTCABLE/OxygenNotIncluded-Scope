@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+   <PropertyGroup>
+      <TargetFramework>net8.0</TargetFramework>
+      <IsPackable>false</IsPackable>
+      <LangVersion>latest</LangVersion>
+      <Nullable>disable</Nullable>
+      <RootNamespace>ScopeMod.Tests</RootNamespace>
+   </PropertyGroup>
+
+   <ItemGroup>
+      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+      <PackageReference Include="xunit" Version="2.9.0" />
+      <PackageReference Include="xunit.runner.visualstudio" Version="2.8.0" />
+   </ItemGroup>
+
+   <!-- Linked-source pattern. pure modules from src/ are compiled
+      directly into ScopeMod.Tests.dll. No <ProjectReference
+      Include="../ScopeMod.csproj"> — that would pull in the
+      netstandard2.1 mod assembly, which transitively references
+      Assembly-CSharp.dll at the user's Steam path. -->
+</Project>
