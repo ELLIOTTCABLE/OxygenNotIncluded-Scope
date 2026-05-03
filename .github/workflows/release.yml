@@ -21,6 +21,7 @@ jobs:
            with:
               install: true
               cache: true
+              experimental: true
 
          - name: Verify lib/ exists
            shell: pwsh
