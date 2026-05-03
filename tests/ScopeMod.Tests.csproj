@@ -12,6 +12,10 @@
       <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
       <PackageReference Include="xunit" Version="2.9.0" />
       <PackageReference Include="xunit.runner.visualstudio" Version="2.8.0" />
+      <!-- Same Newtonsoft version vendored into the mod via ILRepack
+           (Directory.Build.props). Tests resolve it from NuGet directly,
+           so MruStore's JSON ser/de runs the same code path here. -->
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
    </ItemGroup>
 
    <!-- Linked-source pattern. pure modules from src/ are compiled
@@ -19,4 +23,7 @@
       Include="../ScopeMod.csproj"> — that would pull in the
       netstandard2.1 mod assembly, which transitively references
       Assembly-CSharp.dll at the user's Steam path. -->
+   <ItemGroup>
+      <Compile Include="..\src\Mru\MruStore.cs" Link="src\Mru\MruStore.cs" />
+   </ItemGroup>
 </Project>

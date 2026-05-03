@@ -74,6 +74,14 @@
       <PackageReference Include="PLib" Version="*" Private="true" />
    </ItemGroup>
 
+   <!-- Klei ships Newtonsoft.Json.dll in OxygenNotIncluded_Data/Managed and
+        the process loads it at game start; reference that copy at runtime
+        instead of vendoring our own. The test project keeps a NuGet
+        PackageReference so it doesn't need a Steam install path. -->
+   <ItemGroup>
+      <Reference Include="Newtonsoft.Json" HintPath="$(GameFolder)\Newtonsoft.Json.dll" />
+   </ItemGroup>
+
    <ItemGroup>
       <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.40">
          <PrivateAssets>all</PrivateAssets>
