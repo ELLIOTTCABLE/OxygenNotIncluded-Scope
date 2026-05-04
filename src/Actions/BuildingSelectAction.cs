@@ -36,6 +36,9 @@ namespace ScopeMod
       // and jump to" follow-up action). For now we match vanilla: unresearched is blocked.
       private const bool AllowUnresearchedSelection = false;
 
+      // TODO: conf; this allows selection of a building even when no appropriate material is discovered.
+      private const bool AllowGhostsWithoutDiscoveredMaterial = true;
+
       public string DisplayName =>
          STRINGS.UI.StripLinkFormatting(STRINGS.UI.StripStyleFormatting(def.Name));
       public Sprite Sprite => def.GetUISprite();
@@ -85,7 +88,16 @@ namespace ScopeMod
             return;
          }
 
-         ForceFallbackSelections(msp);
+         bool allFilled = ForceFallbackSelections(msp);
+
+         // No discovered material in any unfilled selector: vanilla would show
+         // "X has yet to be discovered" and not fill the hand
+         if (!allFilled)
+         {
+            if (!AllowGhostsWithoutDiscoveredMaterial)
+               return;
+            FillUndiscoveredWithDefaults(msp);
+         }
 
          var elements = ResolveElements(msp);
          var facadeID = pis.FacadeSelectionPanel?.SelectedFacade;
@@ -94,12 +106,16 @@ namespace ScopeMod
             ActivateBuildTool(elements, facadeID);
       }
 
-      private static void ForceFallbackSelections(MaterialSelectionPanel msp)
+      // Returns true if every active selector ends up with a CurrentSelectedElement
+      // (either via Klei's autoselect or our panel-grounded fallback). False means
+      // at least one selector is in the "X has yet to be discovered" state.
+      private static bool ForceFallbackSelections(MaterialSelectionPanel msp)
       {
          var selectors = materialSelectorsField?.GetValue(msp) as List<MaterialSelector>;
          if (selectors == null)
-            return;
+            return false;
 
+         bool allFilled = true;
          foreach (var sel in selectors)
          {
             if (!sel.gameObject.activeSelf)
@@ -109,19 +125,47 @@ namespace ScopeMod
 
             var fallback = PickFallbackElement(sel);
             if (!fallback.IsValid)
+            {
+               allFilled = false;
                continue;
+            }
 
             // recipe = null skips writing the per-slot persistent default,
             // so a 0kg pick doesn't overwrite the user's saved preference.
             sel.OnSelectMaterial(fallback, null, focusScrollRect: false);
          }
+         return allFilled;
       }
 
-      // Generally, trying to ape vanilla's behaviour: priority is (1) any
-      // in-stock material, ranked by vanilla build-menu sort first (Copper
-      // before Niobium) then by mass desc within the same sort tier; (2) when
-      // nothing is in stock, the lowest-sort material so we get sane defaults
-      // instead of 0kg of an exotic; (3) any toggle as last resort.
+      // Last-resort fill for selectors with no discovered material. (Substitute
+      // the building's declared default rather than ElementToggles' scrambled iteration
+      // order.)
+      private void FillUndiscoveredWithDefaults(MaterialSelectionPanel msp)
+      {
+         var selectors = materialSelectorsField?.GetValue(msp) as List<MaterialSelector>;
+         if (selectors == null)
+            return;
+
+         IList<Tag> defaults = null;
+         foreach (var sel in selectors)
+         {
+            if (!sel.gameObject.activeSelf)
+               continue;
+            if (sel.CurrentSelectedElement != null)
+               continue;
+
+            defaults ??= def.DefaultElements();
+            int idx = sel.selectorIndex;
+            if (idx < 0 || idx >= defaults.Count)
+               continue;
+            var tag = defaults[idx];
+            if (!tag.IsValid || !sel.ElementToggles.ContainsKey(tag))
+               continue;
+
+            sel.OnSelectMaterial(tag, null, focusScrollRect: false);
+         }
+      }
+
       // TODO: MRU.
       private static Tag PickFallbackElement(MaterialSelector sel)
       {
@@ -159,12 +203,7 @@ namespace ScopeMod
             if (!best.IsValid || CompareByElementSortOrder(kvp.Key, best) < 0)
                best = kvp.Key;
          }
-         if (best.IsValid)
-            return best;
-
-         foreach (var kvp in sel.ElementToggles)
-            return kvp.Key;
-         return Tag.Invalid;
+         return best;
       }
 
       // Mirrors MaterialSelector.ElementSorter (private). Crib the comparator instead of
