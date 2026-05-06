@@ -9,28 +9,28 @@ namespace ScopeMod.Tests
    public class MruStoreTests
    {
       // In-memory store with no disk IO. Saves go into a string ref we can
-      // inspect; loads pull from the same string. Default is silent (no
-      // warn handler) for the bulk of the tests; tests that exercise warn
-      // behaviour use StoreWithBoxAndWarnings.
+      // inspect; loads pull from the same string. Default is silent (no error
+      // handler) for the bulk of the tests; tests that exercise error behaviour
+      // use StoreWithBoxAndErrors.
       private static MruStore InMemoryStore(int max = MruStore.DEFAULT_MAX)
       {
          var box = new[] { "" };
          return new MruStore(loader: () => box[0], saver: s => box[0] = s, maxPerList: max);
       }
 
-      private static (MruStore store, string[] box, List<string> warnings) StoreWithBoxAndWarnings(
+      private static (MruStore store, string[] box, List<string> errors) StoreWithBoxAndErrors(
          int max = MruStore.DEFAULT_MAX
       )
       {
          var box = new[] { "" };
-         var warnings = new List<string>();
+         var errors = new List<string>();
          var store = new MruStore(
             loader: () => box[0],
             saver: s => box[0] = s,
-            warn: warnings.Add,
+            logError: errors.Add,
             maxPerList: max
          );
-         return (store, box, warnings);
+         return (store, box, errors);
       }
 
       // --- Record / IndexOf / Keys (global namespace) ---
@@ -142,7 +142,7 @@ namespace ScopeMod.Tests
       [Fact]
       public void Save_then_Load_round_trips_global()
       {
-         var (s1, box, _) = StoreWithBoxAndWarnings();
+         var (s1, box, _) = StoreWithBoxAndErrors();
          s1.Record("a");
          s1.Record("b");
          s1.Record("c");
@@ -156,7 +156,7 @@ namespace ScopeMod.Tests
       [Fact]
       public void Save_then_Load_round_trips_with_namespaces()
       {
-         var (s1, box, _) = StoreWithBoxAndWarnings();
+         var (s1, box, _) = StoreWithBoxAndErrors();
          s1.Record("building:LadderConfig");
          s1.Record("material:LadderConfig", "Sandstone");
          s1.Record("material:LadderConfig", "Granite");
@@ -209,30 +209,34 @@ namespace ScopeMod.Tests
       }
 
       [Fact]
-      public void Load_tolerates_loader_throwing_and_warns()
+      public void Load_tolerates_loader_throwing_and_reports()
       {
-         var warnings = new List<string>();
+         var errors = new List<string>();
          var s = new MruStore(
             loader: () => throw new Exception("disk gone"),
             saver: _ => { },
-            warn: warnings.Add
+            logError: errors.Add
          );
          s.Load();
          Assert.Empty(s.Keys);
-         Assert.Single(warnings);
-         Assert.Contains("MRU load failed", warnings[0]);
-         Assert.Contains("disk gone", warnings[0]);
+         Assert.Single(errors);
+         Assert.Contains("MRU load failed", errors[0]);
+         Assert.Contains("disk gone", errors[0]);
       }
 
       [Fact]
-      public void Load_tolerates_malformed_json_and_warns()
+      public void Load_tolerates_malformed_json_and_reports()
       {
-         var warnings = new List<string>();
-         var s = new MruStore(loader: () => "{not valid json", saver: _ => { }, warn: warnings.Add);
+         var errors = new List<string>();
+         var s = new MruStore(
+            loader: () => "{not valid json",
+            saver: _ => { },
+            logError: errors.Add
+         );
          s.Load();
          Assert.Empty(s.Keys);
-         Assert.Single(warnings);
-         Assert.Contains("MRU parse failed", warnings[0]);
+         Assert.Single(errors);
+         Assert.Contains("MRU parse failed", errors[0]);
       }
 
       [Fact]
@@ -248,11 +252,11 @@ namespace ScopeMod.Tests
       [Fact]
       public void Save_warns_once_on_failure_then_throttles()
       {
-         var warnings = new List<string>();
+         var errors = new List<string>();
          var s = new MruStore(
             loader: () => "",
             saver: _ => throw new Exception("disk full"),
-            warn: warnings.Add
+            logError: errors.Add
          );
          s.Record("a");
          s.Save();
@@ -260,14 +264,14 @@ namespace ScopeMod.Tests
          s.Save();
          s.Record("c");
          s.Save();
-         Assert.Single(warnings);
-         Assert.Contains("MRU save failed", warnings[0]);
+         Assert.Single(errors);
+         Assert.Contains("MRU save failed", errors[0]);
       }
 
       [Fact]
       public void Save_re_arms_warning_after_recovery()
       {
-         var warnings = new List<string>();
+         var errors = new List<string>();
          bool fail = true;
          var s = new MruStore(
             loader: () => "",
@@ -276,17 +280,17 @@ namespace ScopeMod.Tests
                if (fail)
                   throw new Exception("boom");
             },
-            warn: warnings.Add
+            logError: errors.Add
          );
          s.Record("a");
-         s.Save(); // fails, warns
+         s.Save(); // fails, reports
          fail = false;
          s.Record("b");
          s.Save(); // succeeds, re-arms
          fail = true;
          s.Record("c");
-         s.Save(); // fails again, warns again
-         Assert.Equal(2, warnings.Count);
+         s.Save(); // fails again, reports again
+         Assert.Equal(2, errors.Count);
       }
    }
 }

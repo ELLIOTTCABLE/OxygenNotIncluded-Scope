@@ -352,9 +352,7 @@ namespace ScopeMod.UI
       private static void ReportExtractFailure(string extractorName, Exception ex)
       {
          if (_reportedFailures.Add(extractorName))
-            Debug.LogWarning(
-               $"[Scope] Extractor {extractorName} threw (suppressing further reports): {ex}"
-            );
+            Log.Error($"Extractor {extractorName} threw (suppressing further reports): {ex}");
       }
 
       #endregion
@@ -689,7 +687,7 @@ namespace ScopeMod.UI
             var ps = PlanScreen.Instance;
             if (ps == null)
             {
-               Debug.LogWarning("[Scope] Warmup: PlanScreen.Instance null; skipping.");
+               Log.Warn("PlanScreen.Instance null; skipping.");
                return;
             }
 
@@ -697,27 +695,25 @@ namespace ScopeMod.UI
             var togglesObj = togglesField?.GetValue(ps);
             if (!(togglesObj is IList toggles) || toggles.Count == 0)
             {
-               Debug.LogWarning("[Scope] Warmup: PlanScreen.toggles empty/inaccessible.");
+               Log.Warn("PlanScreen.toggles empty/inaccessible.");
                return;
             }
 
             if (!(toggles[0] is KToggle first))
             {
-               Debug.LogWarning("[Scope] Warmup: first toggle is null/non-KToggle.");
+               Log.Warn("first toggle is null/non-KToggle.");
                return;
             }
 
-            Mod.Log("[Scope] Warmup: clicking first build-category toggle.");
+            Log.Trace("clicking first build-category toggle.");
             first.Click();
 
             if (BuildingGroupScreen.Instance == null)
-               Debug.LogWarning(
-                  "[Scope] Warmup: Click() returned but Instance still null (focus/EventSystem gate?)."
-               );
+               Log.Warn("Click() returned but Instance still null (focus/EventSystem gate?).");
          }
          catch (Exception ex)
          {
-            Debug.LogWarning($"[Scope] Warmup outer failure: {ex}");
+            Log.Error(() => $"outer failure: {ex}");
          }
       }
 
@@ -725,16 +721,16 @@ namespace ScopeMod.UI
 
       #region Debug
 
+      private const string TokensLine = "[" + nameof(OniUiTokens) + " tokens] ";
+      private const string HierarchyLine = "[" + nameof(OniUiTokens) + " hierarchy] ";
+
       private static bool _dumped;
 
       // Per-overlay-open diagnostic. First call: full hierarchy dump + token
-      // summary. Subsequent calls: token summary only. No-op when LogDebug
-      // is off. Cheap enough for the steady-state path (cached fields are
-      // simple field reads).
+      // summary. Subsequent calls: token summary only.
+      [System.Diagnostics.Conditional("DEBUG_LOGGING")]
       public static void LogPerOpen()
       {
-         if (!Mod.LogDebug)
-            return;
          if (!_dumped)
          {
             _dumped = true;
@@ -744,6 +740,7 @@ namespace ScopeMod.UI
       }
 
       // Forces evaluation of every token; logs resolved values + extracted-vs-default per token.
+      [System.Diagnostics.Conditional("DEBUG_LOGGING")]
       public static void LogResolvedTokens()
       {
          try
@@ -752,14 +749,14 @@ namespace ScopeMod.UI
          }
          catch (Exception ex)
          {
-            Debug.LogWarning($"[Scope] Token log failed: {ex.Message}");
+            Log.Error(() => $"Token log failed: {ex.Message}");
          }
       }
 
       private static void LogResolvedTokensInner()
       {
          var sb = new StringBuilder();
-         sb.AppendLine("[Scope-Tokens] BEGIN");
+         sb.AppendLine(TokensLine + "BEGIN");
 
          LogColor(sb, "HeaderBg", HeaderBg, _headerBg.HasValue);
          LogFloat(sb, "HeaderHeight", HeaderHeight, _headerHeight.HasValue);
@@ -841,78 +838,85 @@ namespace ScopeMod.UI
          );
          LogBool(sb, "ScrollInertia", ScrollInertia, _scrollInertia.HasValue);
 
-         sb.AppendLine("[Scope-Tokens] END");
-         Debug.Log(sb.ToString());
+         sb.AppendLine(TokensLine + "END");
+         Log.Trace(sb.ToString());
       }
 
       private static void LogColor(StringBuilder sb, string name, Color c, bool extracted)
       {
          var c32 = (Color32)c;
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = new Color32({c32.r, 3}, {c32.g, 3}, {c32.b, 3}, {c32.a, 3})"
+            TokensLine
+               + $"{name, -22} = new Color32({c32.r, 3}, {c32.g, 3}, {c32.b, 3}, {c32.a, 3})"
                + $"  // #{ColorUtility.ToHtmlStringRGBA(c)} ({(extracted ? "extracted" : "default")})"
          );
       }
 
       private static void LogFloat(StringBuilder sb, string name, float v, bool extracted) =>
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = {v}f;  // ({(extracted ? "extracted" : "default")})"
+            TokensLine + $"{name, -22} = {v}f;  // ({(extracted ? "extracted" : "default")})"
          );
 
       private static void LogBool(StringBuilder sb, string name, bool v, bool extracted) =>
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = {(v ? "true" : "false")};  // ({(extracted ? "extracted" : "default")})"
+            TokensLine
+               + $"{name, -22} = {(v ? "true" : "false")};  // ({(extracted ? "extracted" : "default")})"
          );
 
       private static void LogVec2(StringBuilder sb, string name, Vector2 v, bool extracted) =>
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = new Vector2({v.x}f, {v.y}f);  // ({(extracted ? "extracted" : "default")})"
+            TokensLine
+               + $"{name, -22} = new Vector2({v.x}f, {v.y}f);  // ({(extracted ? "extracted" : "default")})"
          );
 
       private static void LogFont(StringBuilder sb, string name, TMP_FontAsset f, bool extracted) =>
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = {(f != null ? f.name : "<null>")}  // ({(extracted ? "extracted" : "default (PLib)")})"
+            TokensLine
+               + $"{name, -22} = {(f != null ? f.name : "<null>")}  // ({(extracted ? "extracted" : "default (PLib)")})"
          );
 
       private static void LogMat(StringBuilder sb, string name, Material m, bool extracted) =>
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = {(m != null ? m.name : "<null>")}  // ({(extracted ? "extracted" : "default (null)")})"
+            TokensLine
+               + $"{name, -22} = {(m != null ? m.name : "<null>")}  // ({(extracted ? "extracted" : "default (null)")})"
          );
 
       private static void LogSprite(StringBuilder sb, string name, Sprite s, bool extracted) =>
          sb.AppendLine(
-            $"[Scope-Tokens] {name, -22} = {(s != null ? s.name : "<null>")}  // ({(extracted ? "extracted" : "default (null)")})"
+            TokensLine
+               + $"{name, -22} = {(s != null ? s.name : "<null>")}  // ({(extracted ? "extracted" : "default (null)")})"
          );
 
       // Hierarchy dump for tracking down a renamed Klei path.
+      [System.Diagnostics.Conditional("TRACE_LOGGING")]
       public static void DumpHierarchies()
       {
          try
          {
             var sb = new StringBuilder();
-            sb.AppendLine("[Scope-UI-Dump] BEGIN");
+            sb.AppendLine(HierarchyLine + "BEGIN");
             var ps = PlanScreen.Instance;
             if (ps != null)
             {
-               sb.AppendLine("[Scope-UI-Dump] --- PlanScreen ---");
+               sb.AppendLine(HierarchyLine + "--- PlanScreen ---");
                DumpRec(ps.transform, 0, sb);
             }
             else
-               sb.AppendLine("[Scope-UI-Dump] PlanScreen.Instance == null");
+               sb.AppendLine(HierarchyLine + "PlanScreen.Instance == null");
             var bgs = BuildingGroupScreen.Instance;
             if (bgs != null)
             {
-               sb.AppendLine("[Scope-UI-Dump] --- BuildingGroupScreen ---");
+               sb.AppendLine(HierarchyLine + "--- BuildingGroupScreen ---");
                DumpRec(bgs.transform, 0, sb);
             }
             else
-               sb.AppendLine("[Scope-UI-Dump] BuildingGroupScreen.Instance == null");
-            sb.AppendLine("[Scope-UI-Dump] END");
-            Debug.Log(sb.ToString());
+               sb.AppendLine(HierarchyLine + "BuildingGroupScreen.Instance == null");
+            sb.AppendLine(HierarchyLine + "END");
+            Log.Debug(sb.ToString());
          }
          catch (Exception ex)
          {
-            Debug.LogWarning($"[Scope] Hierarchy dump failed: {ex.Message}");
+            Log.Error(() => $"Hierarchy dump failed: {ex.Message}");
          }
       }
 
@@ -920,7 +924,7 @@ namespace ScopeMod.UI
       {
          if (t == null)
             return;
-         sb.Append("[Scope-UI-Dump] ").Append(new string(' ', depth * 2)).Append(t.name);
+         sb.Append(HierarchyLine).Append(new string(' ', depth * 2)).Append(t.name);
          if (t is RectTransform rt)
          {
             sb.Append($" sizeDelta={rt.sizeDelta} rect={rt.rect.size}");

@@ -50,6 +50,16 @@
       <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
    </PropertyGroup>
 
+   <!-- Compile-time logging gates, mirroring Klei's `[Conditional("ENABLE_*")]`
+      pattern. `DEBUG_LOGGING` is on for the Debug config; `TRACE_LOGGING` is
+      opt-in (use `Directory.Build.props.user` / `-p:DefineConstants=...`).
+      Release builds get neither; debug calls evaporate at every call site,
+      including their argument expressions. Runtime-toggleable `Warn`/`Info` are
+      unaffected. -->
+   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+      <DefineConstants>$(DefineConstants);DEBUG_LOGGING</DefineConstants>
+   </PropertyGroup>
+
    <ItemDefinitionGroup>
       <Reference>
          <Private>False</Private>

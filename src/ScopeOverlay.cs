@@ -30,7 +30,7 @@ namespace ScopeMod
          {
             if (mruStore != null)
                return mruStore;
-            Action<string> warn = msg => Debug.LogWarning($"[Scope] {msg}");
+            Action<string> logError = msg => Log.Error(msg);
             try
             {
                var path = Path.Combine(
@@ -39,14 +39,14 @@ namespace ScopeMod
                   "ScopeMod",
                   "scope-mru.json"
                );
-               mruStore = MruStore.ForFile(path, warn: warn);
+               mruStore = MruStore.ForFile(path, logError);
                mruStore.Load();
             }
             catch (Exception ex)
             {
-               warn($"MRU init failed; running without persistence: {ex.Message}");
+               logError($"MRU init failed; running without persistence: {ex.Message}");
                // In-memory-only fallback so call sites don't need null-checks.
-               mruStore = new MruStore(loader: () => "", saver: _ => { }, warn: warn);
+               mruStore = new MruStore(loader: () => "", saver: _ => { }, logError);
             }
             return mruStore;
          }
@@ -76,11 +76,11 @@ namespace ScopeMod
       {
          if (liveInstance != null)
          {
-            Mod.Log("[Scope] Open() — refocusing live instance.");
+            Log.Trace("Open() — refocusing live instance.");
             liveInstance.FocusInput();
             return;
          }
-         Mod.Log("[Scope] Open() — creating overlay.");
+         Log.Trace("Open() — creating overlay.");
          var parent = GameScreenManager.Instance.GetParent(
             GameScreenManager.UIRenderTarget.ScreenSpaceOverlay
          );
@@ -222,7 +222,7 @@ namespace ScopeMod
          // Invariant: <enter> only closes Scope in order to execute some useful task; never on failure.
          if (!picked.CanInvoke)
          {
-            Mod.Log($"[Scope] Submit blocked (CanInvoke=false): {picked.DisplayName}");
+            Log.Warn($"Submit blocked (CanInvoke=false): {picked.DisplayName}");
             return;
          }
          SubmitAction(picked);
@@ -230,7 +230,7 @@ namespace ScopeMod
 
       private void SubmitAction(IQuickAction picked)
       {
-         Mod.Log($"[Scope] Submit: {picked?.DisplayName ?? "<null>"}");
+         Log.Debug($"Submit: {picked?.DisplayName ?? "<null>"}");
 
          // Best-effort: MruStore logs but doesn't throw on disk failure.
          var key = picked?.MruKey;
@@ -257,7 +257,7 @@ namespace ScopeMod
          }
          catch (System.Exception ex)
          {
-            Debug.LogException(ex);
+            Log.Error(() => $"Action threw: {ex}");
          }
       }
 
@@ -307,8 +307,8 @@ namespace ScopeMod
          bool wasHydrated = BuildingGroupScreen.Instance != null;
          OniUiTokens.Warmup();
          bool isHydrated = BuildingGroupScreen.Instance != null;
-         Mod.Log(
-            $"[Scope] BuildUI: BuildingGroupScreen hydrated before/after warmup = {wasHydrated}/{isHydrated}."
+         Log.Debug(
+            $"BuildUI: BuildingGroupScreen hydrated before/after warmup = {wasHydrated}/{isHydrated}."
          );
          OniUiTokens.LogPerOpen();
 
@@ -509,7 +509,7 @@ namespace ScopeMod
          {
             // Visible-but-not-fatal degraded path: extraction missed the
             // cancel sprite, falling back to a TMP "X" glyph.
-            Mod.Log("[Scope] ClearButton FG fallback: no sprite extracted, using TMP X glyph.");
+            Log.Warn("ClearButton FG fallback: no sprite extracted, using TMP X glyph.");
             var label = fgGo.AddComponent<TextMeshProUGUI>();
             if (label != null)
             {
@@ -523,8 +523,8 @@ namespace ScopeMod
             }
             else
             {
-               Debug.LogWarning(
-                  "[Scope] ClearButton FG fallback: AddComponent<TMP> returned null; clear button has no glyph."
+               Log.Warn(
+                  "ClearButton FG fallback: AddComponent<TMP> returned null; clear button has no glyph."
                );
             }
          }

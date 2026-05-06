@@ -20,29 +20,29 @@ namespace ScopeMod.Mru
 
       private readonly Func<string> loader;
       private readonly Action<string> saver;
-      private readonly Action<string> warn;
+      private readonly Action<string> logError;
       private readonly int maxPerList;
 
       private State state = new State();
       private bool dirty;
-      private bool warnedSaveFailure; // throttle: warn-then-quiet
+      private bool warnedSaveFailure; // throttle: logError-then-quiet
 
       public MruStore(
          Func<string> loader,
          Action<string> saver,
-         Action<string> warn = null,
+         Action<string> logError = null,
          int maxPerList = DEFAULT_MAX
       )
       {
          this.loader = loader;
          this.saver = saver;
-         this.warn = warn ?? (_ => { });
+         this.logError = logError ?? (_ => { });
          this.maxPerList = maxPerList > 0 ? maxPerList : DEFAULT_MAX;
       }
 
       public static MruStore ForFile(
          string path,
-         Action<string> warn = null,
+         Action<string> logError = null,
          int maxPerList = DEFAULT_MAX
       )
       {
@@ -54,7 +54,7 @@ namespace ScopeMod.Mru
                Directory.CreateDirectory(dir);
             File.WriteAllText(path, contents);
          };
-         return new MruStore(loader, saver, warn, maxPerList);
+         return new MruStore(loader, saver, logError, maxPerList);
       }
 
       public IReadOnlyList<string> Keys => KeysIn("");
@@ -109,7 +109,7 @@ namespace ScopeMod.Mru
          }
          catch (Exception ex)
          {
-            warn($"MRU load failed; starting with empty state: {ex.Message}");
+            logError($"MRU load failed; starting with empty state: {ex.Message}");
             state = new State();
             return;
          }
@@ -125,7 +125,7 @@ namespace ScopeMod.Mru
          }
          catch (Exception ex)
          {
-            warn($"MRU parse failed; starting with empty state: {ex.Message}");
+            logError($"MRU parse failed; starting with empty state: {ex.Message}");
             state = new State();
          }
       }
@@ -141,7 +141,7 @@ namespace ScopeMod.Mru
          }
          catch (Exception ex)
          {
-            warn($"MRU serialize failed; in-memory state retained: {ex.Message}");
+            logError($"MRU serialize failed; in-memory state retained: {ex.Message}");
             return;
          }
          try
@@ -154,7 +154,7 @@ namespace ScopeMod.Mru
          {
             if (!warnedSaveFailure)
             {
-               warn($"MRU save failed; in-memory state retained: {ex.Message}");
+               logError($"MRU save failed; in-memory state retained: {ex.Message}");
                warnedSaveFailure = true;
             }
          }
