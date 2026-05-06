@@ -605,7 +605,11 @@ namespace ScopeMod
          vrt.anchorMin = Vector2.zero;
          vrt.anchorMax = Vector2.one;
          vrt.offsetMin = new Vector2(0f, 0f);
-         vrt.offsetMax = new Vector2(-14f, 0f);
+         // 2f gap between viewport's right edge and scrollbar's left edge.
+         vrt.offsetMax = new Vector2(
+            -(OniUiTokens.ScrollbarWidth + OniUiTokens.ScrollbarMargin.x + 2f),
+            0f
+         );
          viewport.GetComponent<Image>().color = Color.white;
          viewport.GetComponent<Mask>().showMaskGraphic = false;
 
@@ -659,11 +663,12 @@ namespace ScopeMod
          );
          scrollbar.transform.SetParent(body.transform, worldPositionStays: false);
          var srt = (RectTransform)scrollbar.transform;
+         var scrollbarMargin = OniUiTokens.ScrollbarMargin;
          srt.anchorMin = new Vector2(1f, 0f);
          srt.anchorMax = new Vector2(1f, 1f);
          srt.pivot = new Vector2(1f, 1f);
-         srt.sizeDelta = new Vector2(OniUiTokens.ScrollbarWidth, 0f);
-         srt.anchoredPosition = Vector2.zero;
+         srt.sizeDelta = new Vector2(OniUiTokens.ScrollbarWidth, -2f * scrollbarMargin.y);
+         srt.anchoredPosition = new Vector2(-scrollbarMargin.x, -scrollbarMargin.y);
          var trackImg = scrollbar.GetComponent<Image>();
          trackImg.color = OniUiTokens.ScrollbarTrackColor;
          if (OniUiTokens.ScrollbarTrackSprite != null)

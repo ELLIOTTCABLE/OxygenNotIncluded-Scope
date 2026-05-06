@@ -86,6 +86,7 @@ namespace ScopeMod.UI
       private static Vector2? _rowNeedsTechSize;
 
       private static float? _scrollbarWidth;
+      private static Vector2? _scrollbarMargin;
       private static Color? _scrollbarTrackColor;
       private static Sprite _scrollbarTrackSprite;
       private static Color? _scrollbarHandleColor;
@@ -245,6 +246,10 @@ namespace ScopeMod.UI
 
       public static float ScrollbarWidth =>
          CacheOpt(ref _scrollbarWidth, Lift.ScrollbarWidth, ScopeUiDefaults.ScrollbarWidth);
+
+      // (rightInset, verticalInset) of the track from its parent's edges.
+      public static Vector2 ScrollbarMargin =>
+         CacheOpt(ref _scrollbarMargin, Lift.ScrollbarMargin, ScopeUiDefaults.ScrollbarMargin);
       public static Color ScrollbarTrackColor =>
          CacheOpt(
             ref _scrollbarTrackColor,
@@ -561,6 +566,23 @@ namespace ScopeMod.UI
 
          public static float? ScrollbarWidth() => Width(ScrollbarTrack() as RectTransform);
 
+         // Klei's scrollbar is anchored to the right edge of its parent
+         // (Viewport) and stretched vertically. Bottom-margin lives in
+         // offsetMin.y, top-margin in -offsetMax.y, right-margin in
+         // -offsetMax.x.
+         public static Vector2? ScrollbarMargin()
+         {
+            var rt = ScrollbarTrack() as RectTransform;
+            if (rt == null)
+               return null;
+            float right = -rt.offsetMax.x;
+            float top = -rt.offsetMax.y;
+            float bottom = rt.offsetMin.y;
+            if (right < 0f || top < 0f || bottom < 0f)
+               return null;
+            return new Vector2(right, (top + bottom) * 0.5f);
+         }
+
          public static Color? ScrollbarTrackColor() =>
             Visible(ScrollbarTrack()?.GetComponent<Image>()?.color);
 
@@ -817,6 +839,7 @@ namespace ScopeMod.UI
          LogVec2(sb, "RowNeedsTechSize", RowNeedsTechSize, _rowNeedsTechSize.HasValue);
 
          LogFloat(sb, "ScrollbarWidth", ScrollbarWidth, _scrollbarWidth.HasValue);
+         LogVec2(sb, "ScrollbarMargin", ScrollbarMargin, _scrollbarMargin.HasValue);
          LogColor(sb, "ScrollbarTrackColor", ScrollbarTrackColor, _scrollbarTrackColor.HasValue);
          LogSprite(sb, "ScrollbarTrackSprite", ScrollbarTrackSprite, _scrollbarTrackSprite != null);
          LogColor(sb, "ScrollbarHandleColor", ScrollbarHandleColor, _scrollbarHandleColor.HasValue);

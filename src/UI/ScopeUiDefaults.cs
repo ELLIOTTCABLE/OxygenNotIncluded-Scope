@@ -72,6 +72,7 @@ namespace ScopeMod.UI
 
       // Scrollbar — Klei's Viewport/Scrollbar.
       public static readonly float ScrollbarWidth = 8f;
+      public static readonly Vector2 ScrollbarMargin = new Vector2(4f, 4f);
       public static readonly Color ScrollbarTrackColor = Color.white;
       public static readonly Sprite ScrollbarTrackSprite = null; // sprite=build_menu_scrollbar_frame
       public static readonly Color ScrollbarHandleColor = new Color32(161, 163, 174, 255);
