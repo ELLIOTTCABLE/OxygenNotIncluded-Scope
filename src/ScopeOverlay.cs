@@ -148,14 +148,33 @@ namespace ScopeMod
       // Defensive consumption at the Klei pipeline so letter keys don't fire
       // game hotkeys (e.g. 'c' → cancel-tool) while the overlay is open.
       // ScopeInputFieldEvents at sort 99 covers the focused case (and lets
-      // wheel events through); this covers the gap when the field momentarily
-      // isn't focused.
+      // wheel + Escape events through); this covers the gap when the field
+      // momentarily isn't focused.
+      //
+      // Escape invariant: while scope is open, scope owns Escape. Pause menu
+      // (opened by RootMenu at sort -1 via Action.Escape) MUST NOT open before
+      // scope closes. We sit at sort 60, so consuming Escape here blocks
+      // RootMenu, ManagementMenu (sort 21), and PauseScreen (sort 30). Modals
+      // at sort 100 still take Escape first as expected.
+      //
+      // Future gap: a non-modal overlay opened *after* scope (while scope is
+      // still visible — e.g. via a "click-out keeps scope open" UX, currently
+      // TBD) would sit at lower sort than us and thus get Escape after we've
+      // already consumed. Handling that correctly needs stack-temporal
+      // bookkeeping ("most-recently- opened wins") which isn't necessary today
+      // because click-outside deactivates scope synchronously.
       public override void OnKeyDown(KButtonEvent e)
       {
          if (e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut))
          {
             if (IsPointerOverPanel())
                e.Consumed = true;
+            return;
+         }
+         if (e.IsAction(Action.Escape))
+         {
+            e.Consumed = true;
+            Deactivate();
             return;
          }
          if (IsInputFocused)
@@ -165,6 +184,8 @@ namespace ScopeMod
       public override void OnKeyUp(KButtonEvent e)
       {
          if (e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut))
+            return;
+         if (e.IsAction(Action.Escape))
             return;
          if (IsInputFocused)
             e.Consumed = true;
@@ -194,9 +215,9 @@ namespace ScopeMod
       //   1. PollMouse: picks up cursor delta from the previous frame
       //   2. Heartbeat tick: may rebuild rows; preserves Attention
       //   3. RenderHighlight: paints whatever the above resolved to
-      //   4. Keyboard handling (Esc, arrows, click-outside): last, so a same-
-      //      frame arrow-press sets Attention=Keyboard *after* PollMouse, which
-      //      is the contract for "most-recent input wins"
+      //   4. Keyboard handling (arrows, click-outside): last, so a same-frame
+      //      arrow-press sets Attention=Keyboard *after* PollMouse, which is
+      //      the contract for "most-recent input wins"
       public void Update()
       {
          selection.PollMouse(Input.mousePosition, FindRowAt, IsPointerOverPanel);
@@ -209,11 +230,6 @@ namespace ScopeMod
 
          RenderHighlight();
 
-         if (Input.GetKeyDown(KeyCode.Escape))
-         {
-            Deactivate();
-            return;
-         }
          // Keyboard nav is gated on IsInputFocused — that's our canonical
          // "scope owns the keyboard" signal. Scope can be long-lived (e.g.
          // calculator flow with the user opening/closing other UIs to reading

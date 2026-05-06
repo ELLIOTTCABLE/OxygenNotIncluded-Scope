@@ -19,6 +19,11 @@ namespace ScopeMod.UI
       public override float GetSortKey() =>
          textEntry != null && textEntry.isFocused ? 99f : base.GetSortKey();
 
+      // Wheel and Escape pass through to lower sort handlers:
+      //   wheel  → CameraController (positional, not focus-bound).
+      //   Escape → ScopeOverlay (single owner of "close scope" semantics).
+      // Everything else is consumed to prevent letter keys from firing game
+      // hotkeys (e.g. 'c' → cancel-tool) while typing.
       public override void OnKeyDown(KButtonEvent e)
       {
          if (textEntry == null || !textEntry.isFocused)
@@ -26,7 +31,11 @@ namespace ScopeMod.UI
             base.OnKeyDown(e);
             return;
          }
-         if (e.IsAction(global::Action.ZoomIn) || e.IsAction(global::Action.ZoomOut))
+         if (
+            e.IsAction(global::Action.ZoomIn)
+            || e.IsAction(global::Action.ZoomOut)
+            || e.IsAction(global::Action.Escape)
+         )
             return;
          e.Consumed = true;
       }
@@ -38,7 +47,11 @@ namespace ScopeMod.UI
             base.OnKeyUp(e);
             return;
          }
-         if (e.IsAction(global::Action.ZoomIn) || e.IsAction(global::Action.ZoomOut))
+         if (
+            e.IsAction(global::Action.ZoomIn)
+            || e.IsAction(global::Action.ZoomOut)
+            || e.IsAction(global::Action.Escape)
+         )
             return;
          e.Consumed = true;
       }
