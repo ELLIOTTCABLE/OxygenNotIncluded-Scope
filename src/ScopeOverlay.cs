@@ -150,17 +150,20 @@ namespace ScopeMod
       // the field momentarily isn't.
       public override void OnKeyDown(KButtonEvent e)
       {
-         if (IsInputFocused)
+         if (e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut))
          {
-            e.Consumed = true;
+            if (IsPointerOverPanel())
+               e.Consumed = true;
             return;
          }
-         if ((e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut)) && IsPointerOverPanel())
+         if (IsInputFocused)
             e.Consumed = true;
       }
 
       public override void OnKeyUp(KButtonEvent e)
       {
+         if (e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut))
+            return;
          if (IsInputFocused)
             e.Consumed = true;
       }
@@ -1124,6 +1127,8 @@ namespace ScopeMod
 
             var button = go.GetComponent<Button>();
             button.targetGraphic = bg;
+            // Unity Button's default ColorTint fights our our SetHighlighted.
+            button.transition = Selectable.Transition.None;
 
             var iconGo = new GameObject("Icon", typeof(RectTransform));
             iconGo.transform.SetParent(go.transform, worldPositionStays: false);
