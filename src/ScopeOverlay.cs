@@ -70,6 +70,9 @@ namespace ScopeMod
 
       private int caretBeforeArrowKeyOverride = -1;
 
+      private int resultsFingerprint;
+      private bool hasResultsFingerprint;
+
       // Sort key 60 sits above EDITING_SCREEN (50) and below MODAL (100). Receives input
       // before BuildingGroupScreen's KInputTextField (sort 0) per KScreenManager's
       // reverse-stack dispatch (top-most first). May need tweaking.
@@ -290,7 +293,24 @@ namespace ScopeMod
       private void UpdateResults(string query)
       {
          currentResults = ScopeSearch.Rank(query, allActions, MAX_RESULTS, Mru);
+         int fp = FingerprintResults(currentResults);
+         if (hasResultsFingerprint && fp == resultsFingerprint)
+            return;
+         resultsFingerprint = fp;
+         hasResultsFingerprint = true;
          RebuildSections();
+      }
+
+      private static int FingerprintResults(List<RankedResult> results)
+      {
+         var hc = new HashCode();
+         for (int i = 0; i < results.Count; i++)
+         {
+            var a = results[i].Action;
+            hc.Add(a.MruKey);
+            hc.Add(a.RenderStateHash);
+         }
+         return hc.ToHashCode();
       }
 
       private void RefreshActionsAndResults(bool keepHighlight)

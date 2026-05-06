@@ -52,6 +52,7 @@ namespace ScopeMod
       public string SearchDemotionSuffix =>
          requirementsState == PlanScreen.RequirementsState.Tech ? "unresearched" : "unavailable";
       public string MruKey => "building:" + def.PrefabID;
+      public int RenderStateHash => (int)requirementsState;
       public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
       public void Invoke()

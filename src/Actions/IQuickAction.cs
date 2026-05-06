@@ -46,5 +46,14 @@ namespace ScopeMod
       // prefix prevents collisions if a future provider happens to use a
       // bare identifier that overlaps.
       string MruKey { get; }
+
+      // Encodes the *mutable & visible* slice of state. Include anything that
+      // can flip at runtime AND affects rendering; it's folded into a
+      // results-list fingerprint so the overlay can skip rebuilds when nothing
+      // on-screen would actually change.
+      //
+      // Exclude immutable-but-visible (name, sprite - covered by MruKey
+      // identity) and mutable-but-invisible (internal bookkeeping).
+      int RenderStateHash { get; }
    }
 }
