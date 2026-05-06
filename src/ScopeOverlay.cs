@@ -57,6 +57,7 @@ namespace ScopeMod
 
       private TMP_InputField inputField;
       private RectTransform sectionsContent;
+      private RectTransform viewportRT;
       private GameObject emptyState;
       private bool suppressEndEditHandling;
       private readonly List<SectionWidget> sections = new(32);
@@ -64,7 +65,7 @@ namespace ScopeMod
       private readonly Dictionary<string, bool> expandedSections = new(StringComparer.Ordinal);
 
       private List<RankedResult> currentResults = new(MAX_RESULTS);
-      private int highlighted;
+      private readonly ScopeSelection selection = new();
       private List<IQuickAction> allActions;
       private float nextStateRefreshAt;
 
@@ -132,9 +133,9 @@ namespace ScopeMod
 
          inputField.text = "";
          FocusInput();
-         highlighted = 0;
+         selection.Reset(Input.mousePosition);
          nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
-         RefreshActionsAndResults(keepHighlight: false);
+         RefreshActionsAndResults();
       }
 
       public override void OnDeactivate()
@@ -144,10 +145,11 @@ namespace ScopeMod
             liveInstance = null;
       }
 
-      // Defensive consumption at the Klei pipeline so letter keys don't fire game hotkeys
-      // (e.g. 'c' → cancel-tool) while the overlay is open. PLib's PTextFieldEvents at
-      // sort 99 already does this while the field is focused, but we cover the gap when
-      // the field momentarily isn't.
+      // Defensive consumption at the Klei pipeline so letter keys don't fire
+      // game hotkeys (e.g. 'c' → cancel-tool) while the overlay is open.
+      // ScopeInputFieldEvents at sort 99 covers the focused case (and lets
+      // wheel events through); this covers the gap when the field momentarily
+      // isn't focused.
       public override void OnKeyDown(KButtonEvent e)
       {
          if (e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut))
@@ -168,46 +170,71 @@ namespace ScopeMod
             e.Consumed = true;
       }
 
-      private bool IsPointerOverPanel()
+      private bool IsPointerOverPanel() => IsPointerOverPanel(Input.mousePosition);
+
+      private bool IsPointerOverPanel(Vector2 screenPos)
       {
          var rt = (RectTransform)transform;
          if (rt == null)
             return false;
          return RectTransformUtility.ScreenPointToLocalPointInRectangle(
                rt,
-               Input.mousePosition,
+               screenPos,
                null,
                out var local
             ) && rt.rect.Contains(local);
       }
 
-      // Navigation / dismiss runs in Update() rather than OnKey* because PTextFieldEvents
-      // at sort 99 consumes all Klei key events while the field is focused — our sort-60
-      // OnKeyDown/Up never fires for typed keys. Unity's Input polling sees keys regardless.
+      // Navigation / dismiss runs in Update() rather than OnKey* because our
+      // ScopeInputFieldEvents at sort 99 consumes Klei key events while the
+      // field is focused, so this KScreen's sort-60 OnKeyDown/Up never fires
+      // for typed keys. Unity's Input polling sees keys regardless.
+      //
+      // NOTE: Ordering and timing sensitive;
+      //   1. PollMouse: picks up cursor delta from the previous frame
+      //   2. Heartbeat tick: may rebuild rows; preserves Attention
+      //   3. RenderHighlight: paints whatever the above resolved to
+      //   4. Keyboard handling (Esc, arrows, click-outside): last, so a same-
+      //      frame arrow-press sets Attention=Keyboard *after* PollMouse, which
+      //      is the contract for "most-recent input wins"
       public void Update()
       {
+         selection.PollMouse(Input.mousePosition, FindRowAt, IsPointerOverPanel);
+
          if (Time.unscaledTime >= nextStateRefreshAt)
          {
             nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
-            RefreshActionsAndResults(keepHighlight: true);
+            RefreshActionsAndResults();
          }
+
+         RenderHighlight();
 
          if (Input.GetKeyDown(KeyCode.Escape))
          {
             Deactivate();
             return;
          }
+         // Keyboard nav is gated on IsInputFocused — that's our canonical
+         // "scope owns the keyboard" signal. Scope can be long-lived (e.g.
+         // calculator flow with the user opening/closing other UIs to reading
+         // numbers), so when the user has clicked out of the input field we
+         // deliberately yield arrows + Enter to whatever they're attending to.
+         // The fix for intra-scope clicks (section toggles, panel empty-space)
+         // is to restore input focus, not to capture keys regardless of focus.
+         // Enter when focused goes through TMP's onEndEdit → Submit.
          if (IsInputFocused)
          {
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
-               Highlight(highlighted - 1);
+               selection.SetKeyboard(selection.KeyboardRow - 1, visibleRows.Count);
+               RenderHighlight();
                UndoTmpCaretMove();
                return;
             }
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
-               Highlight(highlighted + 1);
+               selection.SetKeyboard(selection.KeyboardRow + 1, visibleRows.Count);
+               RenderHighlight();
                UndoTmpCaretMove();
                return;
             }
@@ -224,6 +251,35 @@ namespace ScopeMod
                Deactivate();
             return;
          }
+      }
+
+      // Viewport gate avoids scrolled-out rows hit-testing through the mask (a
+      // row scrolled above/below the visible region - e.g. the subheader.)
+      // RectangleContainsScreenPoint ignores parent masks, so we filter by the
+      // viewport before iterating
+      private int? FindRowAt(Vector2 screenPos)
+      {
+         if (
+            viewportRT == null
+            || !RectTransformUtility.RectangleContainsScreenPoint(viewportRT, screenPos, null)
+         )
+            return null;
+         for (int i = 0; i < visibleRows.Count; i++)
+         {
+            if (visibleRows[i].ContainsScreenPoint(screenPos))
+               return i;
+         }
+         return null;
+      }
+
+      // Single render site for the highlight visual. eff==null is valid and
+      // means no row is currently selected (mouse-attentive but cursor in a
+      // gap); every row gets SetHighlighted(false).
+      private void RenderHighlight()
+      {
+         var eff = selection.Effective;
+         for (int i = 0; i < visibleRows.Count; i++)
+            visibleRows[i].SetHighlighted(eff.HasValue && i == eff.Value);
       }
 
       public void LateUpdate()
@@ -250,7 +306,20 @@ namespace ScopeMod
             return;
          }
 
-         var picked = visibleRows[Mathf.Clamp(highlighted, 0, visibleRows.Count - 1)].Action;
+         // In all cases, 'no effective selection' means <return> is a no-op.
+         // Per the highlight<->return invariant, nothing renders highlighted in
+         // this state, so activating "nothing" would be confusing. The user's
+         // select will return when they 'finish' moving the mouse into the next
+         // row up, or leave the window (where it returns to the most-recent
+         // keyboard selection.)
+         var eff = selection.Effective;
+         if (!eff.HasValue)
+         {
+            Log.Debug("Submit() noop: cursor between rows in mouse-attentive mode.");
+            return;
+         }
+
+         var picked = visibleRows[Mathf.Clamp(eff.Value, 0, visibleRows.Count - 1)].Action;
          // Invariant: <enter> only closes Scope in order to execute some useful task; never on failure.
          if (!picked.CanInvoke)
          {
@@ -304,6 +373,21 @@ namespace ScopeMod
          RebuildSections();
       }
 
+      // Wired to inputField.onValueChanged. Typing is keyboard input, so we
+      // claim Attention=Keyboard and snap K to the top result. Order matters:
+      // UpdateResults may rebuild rows (changing visibleRows.Count); SetKeyboard
+      // must run after so it clamps against the post-rebuild count. The
+      // OnRowsRebuilt call inside RebuildSections deliberately doesn't touch
+      // Attention (see ScopeSelection class header) — this is where typing
+      // explicitly converts a heartbeat-style rebuild into a keyboard-input
+      // event.
+      private void HandleInputValueChanged(string query)
+      {
+         UpdateResults(query);
+         selection.SetKeyboard(0, visibleRows.Count);
+         RenderHighlight();
+      }
+
       private static int FingerprintResults(List<RankedResult> results)
       {
          var hc = new HashCode();
@@ -316,35 +400,21 @@ namespace ScopeMod
          return hc.ToHashCode();
       }
 
-      private void RefreshActionsAndResults(bool keepHighlight)
+      // Heartbeat path (and initial population from OnActivate). Re-enumerate
+      // providers so RequirementsState tracks live game state (materials,
+      // research, world) while the overlay is open. Any resulting rebuild is
+      // explicitly NOT user input: Attention must survive the tick so a mouse
+      // hover doesn't get clobbered every 0.25s. User-initiated rebuilds go
+      // through HandleInputValueChanged, which flips Attention=Keyboard
+      // separately.
+      private void RefreshActionsAndResults()
       {
-         int previousHighlight = highlighted;
-
-         // Re-enumerate from providers so RequirementsState tracks vanilla's live cache
-         // while the overlay is open (materials/research/world-state can change mid-session).
          allActions = new List<IQuickAction>(256);
          foreach (var provider in ScopeProviders.All)
          foreach (var action in provider.Enumerate())
             allActions.Add(action);
 
          UpdateResults(inputField != null ? inputField.text : "");
-         if (keepHighlight)
-            Highlight(previousHighlight);
-      }
-
-      private void Highlight(int idx)
-      {
-         if (visibleRows.Count == 0)
-         {
-            highlighted = 0;
-            return;
-         }
-
-         highlighted = ((idx % visibleRows.Count) + visibleRows.Count) % visibleRows.Count;
-         for (int i = 0; i < visibleRows.Count; i++)
-         {
-            visibleRows[i].SetHighlighted(i == highlighted);
-         }
       }
 
       private void BuildUI()
@@ -458,6 +528,15 @@ namespace ScopeMod
          var fieldGo = pField.Build();
          fieldGo.transform.SetParent(subheader.transform, worldPositionStays: false);
 
+         // Swap PLib's PTextFieldEvents for ours: PLib consumes ALL KButtonEvents
+         // at sort 99 while editing, eating Action.ZoomIn/ZoomOut before
+         // CameraController sees them. Ours lets those two pass through.
+         // Looked up by string because PLib marks the type internal.
+         var plibEvents = fieldGo.GetComponent("PTextFieldEvents");
+         if (plibEvents != null)
+            UnityEngine.Object.Destroy(plibEvents);
+         fieldGo.AddComponent<ScopeInputFieldEvents>();
+
          var fieldLE = fieldGo.GetComponent<LayoutElement>();
          if (fieldLE == null)
             fieldLE = fieldGo.AddComponent<LayoutElement>();
@@ -475,7 +554,7 @@ namespace ScopeMod
          // Live filtering: PTextField's OnTextChanged delegate only fires on EndEdit
          // (Enter / blur). Wire onValueChanged directly for keystroke-by-keystroke
          // updates.
-         inputField.onValueChanged.AddListener(UpdateResults);
+         inputField.onValueChanged.AddListener(HandleInputValueChanged);
 
          if (inputField.placeholder is TextMeshProUGUI placeholder)
          {
@@ -605,6 +684,7 @@ namespace ScopeMod
          );
          viewport.transform.SetParent(body.transform, worldPositionStays: false);
          var vrt = (RectTransform)viewport.transform;
+         viewportRT = vrt;
          vrt.anchorMin = Vector2.zero;
          vrt.anchorMax = Vector2.one;
          vrt.offsetMin = new Vector2(0f, 0f);
@@ -784,7 +864,9 @@ namespace ScopeMod
             emptyState.SetActive(currentResults.Count == 0);
 
          RefreshVisibleRows();
-         Highlight(0);
+         // Reclamp K to the new row count without touching Attention
+         selection.OnRowsRebuilt(visibleRows.Count);
+         RenderHighlight();
       }
 
       private void FocusInput()
@@ -841,11 +923,23 @@ namespace ScopeMod
          return true;
       }
 
+      // Section collapse/expand changes visibleRows without re-ranking. Treated
+      // as a layout event, not user input — the click that triggered this is
+      // already accounted for through PollMouse (cursor was on the section
+      // header, will continue to drive Attention via subsequent motion).
+      //
+      // We must refocus the input: clicking the section button makes
+      // EventSystem deselect the TMP_InputField, which would otherwise drop our
+      // "scope owns the keyboard" signal (IsInputFocused). Currently, the
+      // canonical scope-active workflow keeps the input field focused
+      // throughout intra-scope clicks; only clicks outside the panel yield it.
       private void OnSectionToggled(string key, bool expanded)
       {
          expandedSections[key] = expanded;
          RefreshVisibleRows();
-         Highlight(highlighted);
+         selection.OnRowsRebuilt(visibleRows.Count);
+         RenderHighlight();
+         FocusInput();
       }
 
       private void RefreshVisibleRows()
@@ -1091,12 +1185,16 @@ namespace ScopeMod
       private sealed class RowWidget
       {
          private readonly GameObject root;
+         private readonly RectTransform rt;
          private readonly Image background;
          private readonly Image icon;
          private readonly Image techBadge;
          private readonly TextMeshProUGUI label;
          private readonly bool isAvailable;
          public IQuickAction Action { get; }
+
+         public bool ContainsScreenPoint(Vector2 screenPos) =>
+            rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null);
 
          public static RowWidget Create(
             Transform parent,
@@ -1199,6 +1297,7 @@ namespace ScopeMod
          )
          {
             root = g;
+            rt = (RectTransform)g.transform;
             background = bg;
             icon = ic;
             techBadge = tech;
