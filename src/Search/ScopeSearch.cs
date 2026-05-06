@@ -5,9 +5,6 @@ namespace ScopeMod
 {
    internal static class ScopeSearch
    {
-      // SearchUtil.IsPassingScore threshold
-      private const int MIN_SCORE = 79;
-
       public static List<RankedResult> Rank(
          string query,
          IList<IQuickAction> actions,
@@ -77,24 +74,8 @@ namespace ScopeMod
          var scored = new List<RankedResult>(actions.Count);
          for (int i = 0; i < actions.Count; i++)
          {
-            var canonName = SearchUtil.Canonicalize(actions[i].DisplayName);
-            var match = FuzzySearch.ScoreCanonicalCandidate(canonQuery, canonName);
-            int score = match.score;
-
-            // max(name, alias) mirrors Klei's NameDescSearchTermsCache.Score;
-            // lets aliases win, e.g. "toilet" → Outhouse via def.SearchTerms.
-            //
-            // I don't necessarily love this behaviour; the list feels ...
-            // slightly random to me. But whatever, parity trumps taste here.
-            var terms = actions[i].SearchTerms;
-            if (terms != null && terms.Count > 0)
-            {
-               var aliasMatch = FuzzySearch.ScoreTokens(canonQuery, terms);
-               if (aliasMatch.score > score)
-                  score = aliasMatch.score;
-            }
-
-            if (score >= MIN_SCORE)
+            int score = actions[i].Score(canonQuery);
+            if (score >= SearchUtil.MATCH_SCORE_THRESHOLD)
                scored.Add(new RankedResult(actions[i], score));
          }
          // MRU as score-tiebreak: among same tier + same fuzzy score, the

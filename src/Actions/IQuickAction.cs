@@ -47,11 +47,14 @@ namespace ScopeMod
       // bare identifier that overlaps.
       string MruKey { get; }
 
-      // Extra match-tokens beyond DisplayName (aliases, keywords, parent
-      // category). Producer-supplied uppercase to match `FuzzySearch.ScoreTokens`
-      // (which compares against the already-uppercase `SearchUtil.Canonicalize`d
-      // query) without per-search recanonicalisation. May be null.
-      System.Collections.Generic.IReadOnlyList<string> SearchTerms { get; }
+      // Per-query 0..100 relevance score; below SearchUtil.MATCH_SCORE_THRESHOLD
+      // drops the action from results.
+      //
+      // Each action picks its own policy - e.g. building actions defer to
+      // vanilla's BuildingDefCache for build-menu parity; some actions are free
+      // to use a looser policy (e.g. partial-match aliases) when there's no
+      // vanilla expectation to violate.
+      int Score(string canonicalQueryUpper);
 
       // Encodes the *mutable & visible* slice of state. Include anything that
       // can flip at runtime AND affects rendering; it's folded into a

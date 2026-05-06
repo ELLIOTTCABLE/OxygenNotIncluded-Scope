@@ -56,6 +56,61 @@ namespace ScopeMod
       public int RenderStateHash => (int)requirementsState;
       public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
+      // Defer to vanilla's `BuildingDefCache` so we score the same sources
+      // (currently [name, desc, alias, effect, recipe name+desc]) the build
+      // menu does.
+      //
+      // Regression: do not share PlanScreen instances; Bind mutates them live.
+      private static readonly Dictionary<string, SearchUtil.BuildingDefCache> privateDefCaches =
+         new(System.StringComparer.Ordinal);
+
+      private SearchUtil.BuildingDefCache cachedDefCache;
+      private SearchUtil.MatchCache cachedSubMatchCache;
+      private bool subMatchResolved;
+
+      public int Score(string canonicalQueryUpper)
+      {
+         var defCache = ResolveDefCache();
+         defCache.Bind(canonicalQueryUpper);
+         int s = defCache.Score;
+
+         var subMatch = ResolveSubMatchCache();
+         if (subMatch != null)
+         {
+            subMatch.Bind(canonicalQueryUpper);
+            if (subMatch.Score > s)
+               s = subMatch.Score;
+         }
+         return s;
+      }
+
+      private SearchUtil.BuildingDefCache ResolveDefCache()
+      {
+         if (cachedDefCache != null)
+            return cachedDefCache;
+         if (!privateDefCaches.TryGetValue(def.PrefabID, out var c) || c == null)
+         {
+            c = SearchUtil.MakeBuildingDefCache(def);
+            privateDefCaches[def.PrefabID] = c;
+         }
+         return cachedDefCache = c;
+      }
+
+      // Bind only the title's `MatchCache` (`SubcategoryCache.Bind` recursively
+      // rebinds every nested `BuildingDefCache`)
+      private SearchUtil.MatchCache ResolveSubMatchCache()
+      {
+         if (subMatchResolved)
+            return cachedSubMatchCache;
+         subMatchResolved = true;
+         if (!string.IsNullOrEmpty(subcategoryTitle) && subcategoryTitle != "default")
+            cachedSubMatchCache = new SearchUtil.MatchCache
+            {
+               text = SearchUtil.Canonicalize(subcategoryTitle),
+            };
+         return cachedSubMatchCache;
+      }
+
       public void Invoke()
       {
          var plan = PlanScreen.Instance;
