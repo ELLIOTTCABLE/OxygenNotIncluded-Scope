@@ -1,0 +1,39 @@
+# What is this? Read the .gitlabels README:
+#   <https://github.com/elliottcable/.gitlabels>
+
+# Core (at least one of these should apply to every commit)
+- (new) new functionality or content
+- (re refactor) subtle improvement, no intentional behavioural change visible to consumers, unless paired with (API)/(BRK)
+- (fix:<issue_id> fixes closes) fixes a bug or problem, optional issue-ID
+
+# Importance markers
+- (- minor) unimportant / safe to skim past. typos, auto-reformats, mechanical, etc
+  - (typo) typofix
+- (!!) major / widespread / "landing a huge refactor"
+- (API) public API surface change, contract
+  - (BRK) breaking change (almost always paired with (!!))
+
+# Authorship
+- (AI) LLM-authored commit; mandatory on every AI-created commit
+
+# Behavioural impact
+- (tests) does *not* modify any implementation code, in any way (instead, indicates modifying code in the test suite)
+- (noop) as (tests), except indicates that a commit does not modify any code belonging to the test suite either
+  - (style) as (noop), because it only changes alignment/spacing/visual orientation of code or documentation
+  - (doc) as (noop), because only change comments, documentation, etc (exclusive of actual *executed* code)
+  - (meta) as (noop), performing only meta-project changes, not affecting runtime/production behavoiour (config, packaging, CI, etc)
+    - (CI) changes to automated build, pipelines, GH actions, release, etc
+
+# General
+- (dep) dependency management
+  - (up) bumping a dependency / SDK / lib version (often paired with `dep`)
+- (rm) removal of something not just a code-deletion (often paired: `(rm dep)`)
+- (sec) security
+- (UI) user-interface / visual fidelity / layout
+  - (extr) live-extraction of Klei prefab values into OniUiTokens
+- (input) keyboard / mouse / hotkey handling
+- (Klei) Klei-internals interop (reflection, harmony, decomp-cribbing)
+
+# Functionality (don't dupe filenames / modules; only for cross-cutting areas)
+- (MRU) most-recently-used feature surface
+- (search) ranking / fuzzy / SearchUtil-related
