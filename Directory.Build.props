@@ -1,5 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
+   <!-- Per-platform objects (WSL/native-Windows builds; and Syncthing
+      safety to macOS/*nix.)
+
+      Set before any other property group so it lands before
+      Microsoft.Common.Props imports NuGet's generated targets; see
+      dotnet/msbuild#1603 for the timing rationale. -->
+   <PropertyGroup>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Windows')) ">windows</_HostKey>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('OSX')) ">osx</_HostKey>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Linux')) and '$(WSL_DISTRO_NAME)' == '' ">linux</_HostKey>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Linux')) and '$(WSL_DISTRO_NAME)' != '' ">wsl</_HostKey>
+
+      <BaseIntermediateOutputPath>obj/$(_HostKey)/</BaseIntermediateOutputPath>
+      <BaseOutputPath>bin/$(_HostKey)/</BaseOutputPath>
+
+      <!-- The SDK default-item glob (`**/*.cs`) only excludes the *current*
+         BaseIntermediateOutputPath. Exclude sibling per-platform obj/ trees to
+         avoid leak. -->
+      <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+   </PropertyGroup>
+
    <!-- Default paths always load; user file (if present) layers on top to
       override individual properties (e.g. WSL-style /mnt/... paths, conditional
       on [MSBuild]::IsOSPlatform('Linux')). -->

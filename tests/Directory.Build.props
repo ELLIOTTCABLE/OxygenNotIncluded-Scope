@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-   Empty <Project/> stops MSBuild's upward walk.
-   Avoids the repo-root props that pull in PLib, Harmony, Krafs.Publicizer, game-DLLs, etc.
+   Empty <Project/> stops MSBuild's upward walk so we don't inherit the repo-
+   root's PLib/Harmony/Krafs.Publicizer/game-DLL refs.
 -->
-<Project></Project>
+<Project>
+   <!-- See root-level config. -->
+   <PropertyGroup>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Windows')) ">windows</_HostKey>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('OSX')) ">osx</_HostKey>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Linux')) and '$(WSL_DISTRO_NAME)' == '' ">linux</_HostKey>
+      <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Linux')) and '$(WSL_DISTRO_NAME)' != '' ">wsl</_HostKey>
+
+      <BaseIntermediateOutputPath>obj/$(_HostKey)/</BaseIntermediateOutputPath>
+      <BaseOutputPath>bin/$(_HostKey)/</BaseOutputPath>
+   </PropertyGroup>
+</Project>
