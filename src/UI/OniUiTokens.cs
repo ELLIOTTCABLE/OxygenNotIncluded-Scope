@@ -748,16 +748,14 @@ namespace ScopeMod.UI
 
       private static bool _dumped;
 
-      // Per-overlay-open diagnostic. First call: full hierarchy dump + token
-      // summary. Subsequent calls: token summary only.
+      // Per-overlay-open diagnostic. First call dumps hierarchy + tokens.
       [System.Diagnostics.Conditional("DEBUG_LOGGING")]
       public static void LogPerOpen()
       {
-         if (!_dumped)
-         {
-            _dumped = true;
-            DumpHierarchies();
-         }
+         if (_dumped)
+            return;
+         _dumped = true;
+         DumpHierarchies();
          LogResolvedTokens();
       }
 
