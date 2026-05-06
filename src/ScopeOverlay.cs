@@ -11,6 +11,9 @@ using UnityEngine.UI;
 
 namespace ScopeMod
 {
+   // Ensure TMP_InputField has already processed arrow keys via EventSystem
+   // before our Update runs the caret-restore.
+   [DefaultExecutionOrder(int.MaxValue)]
    internal sealed class ScopeOverlay : KScreen
    {
       private const int MAX_RESULTS = 120;
