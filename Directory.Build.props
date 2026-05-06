@@ -19,6 +19,14 @@
       <SupportedContent>VANILLA_ID,EXPANSION1_ID</SupportedContent>
       <LastWorkingBuild>675080</LastWorkingBuild>
       <StaticID>io.ell.OxygenNotIncluded.ScopeMod</StaticID>
+
+      <!-- Klei/PLib all reference `System.Net.Http` 4.2 vs netstandard2.1's
+         4.1.2 facade. (Unity's Mono BCL resolves once at runtime so the
+         conflict is benign.)
+
+         This still surfaces under `-v:detailed` to give us at least *some*
+         chance at catching a future, real mismatch before it hits runtime. -->
+      <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
    </PropertyGroup>
 
    <ItemDefinitionGroup>
