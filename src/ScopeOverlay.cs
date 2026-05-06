@@ -65,6 +65,8 @@ namespace ScopeMod
       private List<IQuickAction> allActions;
       private float nextStateRefreshAt;
 
+      private int caretBeforeArrowKeyOverride = -1;
+
       // Sort key 60 sits above EDITING_SCREEN (50) and below MODAL (100). Receives input
       // before BuildingGroupScreen's KInputTextField (sort 0) per KScreenManager's
       // reverse-stack dispatch (top-most first). May need tweaking.
@@ -143,6 +145,11 @@ namespace ScopeMod
       public override void OnKeyDown(KButtonEvent e)
       {
          if (IsInputFocused)
+         {
+            e.Consumed = true;
+            return;
+         }
+         if ((e.IsAction(Action.ZoomIn) || e.IsAction(Action.ZoomOut)) && IsPointerOverPanel())
             e.Consumed = true;
       }
 
@@ -150,6 +157,19 @@ namespace ScopeMod
       {
          if (IsInputFocused)
             e.Consumed = true;
+      }
+
+      private bool IsPointerOverPanel()
+      {
+         var rt = (RectTransform)transform;
+         if (rt == null)
+            return false;
+         return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+               rt,
+               Input.mousePosition,
+               null,
+               out var local
+            ) && rt.rect.Contains(local);
       }
 
       // Navigation / dismiss runs in Update() rather than OnKey* because PTextFieldEvents
@@ -173,11 +193,13 @@ namespace ScopeMod
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
                Highlight(highlighted - 1);
+               UndoTmpCaretMove();
                return;
             }
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
                Highlight(highlighted + 1);
+               UndoTmpCaretMove();
                return;
             }
          }
@@ -185,29 +207,30 @@ namespace ScopeMod
          // Click outside the panel dismisses. The panel itself catches its own
          // clicks via Image.raycastTarget, so this only fires when the cursor is over
          // empty space / the game world.
-         if (Input.GetMouseButtonDown(0))
+         if (Input.GetMouseButtonDown(0) && !IsPointerOverPanel())
          {
-            var rt = (RectTransform)transform;
-            if (
-               RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                  rt,
-                  Input.mousePosition, /* camera */
-                  null,
-                  out var local
-               ) && !rt.rect.Contains(local)
-            )
-            {
-               if (IsInputFocused)
-               {
-                  ReleaseInputFocus();
-               }
-               else
-               {
-                  Deactivate();
-               }
-               return;
-            }
+            if (IsInputFocused)
+               ReleaseInputFocus();
+            else
+               Deactivate();
+            return;
          }
+      }
+
+      public void LateUpdate()
+      {
+         if (IsInputFocused)
+            caretBeforeArrowKeyOverride = inputField.caretPosition;
+      }
+
+      private void UndoTmpCaretMove()
+      {
+         if (caretBeforeArrowKeyOverride < 0 || inputField == null)
+            return;
+         int pos = Mathf.Clamp(caretBeforeArrowKeyOverride, 0, inputField.text?.Length ?? 0);
+         inputField.caretPosition = pos;
+         inputField.selectionAnchorPosition = pos;
+         inputField.selectionFocusPosition = pos;
       }
 
       private void Submit()
