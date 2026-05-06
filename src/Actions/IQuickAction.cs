@@ -47,6 +47,12 @@ namespace ScopeMod
       // bare identifier that overlaps.
       string MruKey { get; }
 
+      // Extra match-tokens beyond DisplayName (aliases, keywords, parent
+      // category). Producer-supplied uppercase to match `FuzzySearch.ScoreTokens`
+      // (which compares against the already-uppercase `SearchUtil.Canonicalize`d
+      // query) without per-search recanonicalisation. May be null.
+      System.Collections.Generic.IReadOnlyList<string> SearchTerms { get; }
+
       // Encodes the *mutable & visible* slice of state. Include anything that
       // can flip at runtime AND affects rendering; it's folded into a
       // results-list fingerprint so the overlay can skip rebuilds when nothing

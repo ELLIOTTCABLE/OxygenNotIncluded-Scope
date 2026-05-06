@@ -79,8 +79,23 @@ namespace ScopeMod
          {
             var canonName = SearchUtil.Canonicalize(actions[i].DisplayName);
             var match = FuzzySearch.ScoreCanonicalCandidate(canonQuery, canonName);
-            if (match.score >= MIN_SCORE)
-               scored.Add(new RankedResult(actions[i], match.score));
+            int score = match.score;
+
+            // max(name, alias) mirrors Klei's NameDescSearchTermsCache.Score;
+            // lets aliases win, e.g. "toilet" → Outhouse via def.SearchTerms.
+            //
+            // I don't necessarily love this behaviour; the list feels ...
+            // slightly random to me. But whatever, parity trumps taste here.
+            var terms = actions[i].SearchTerms;
+            if (terms != null && terms.Count > 0)
+            {
+               var aliasMatch = FuzzySearch.ScoreTokens(canonQuery, terms);
+               if (aliasMatch.score > score)
+                  score = aliasMatch.score;
+            }
+
+            if (score >= MIN_SCORE)
+               scored.Add(new RankedResult(actions[i], score));
          }
          // MRU as score-tiebreak: among same tier + same fuzzy score, the
          // more-recently-used item wins. Doesn't perturb fuzzy primary order
