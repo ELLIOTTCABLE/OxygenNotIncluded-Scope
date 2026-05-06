@@ -4,7 +4,7 @@
    root's PLib/Harmony/Krafs.Publicizer/game-DLL refs.
 -->
 <Project>
-   <!-- See root-level config. -->
+   <!-- See root-level config for the details about these properties -->
    <PropertyGroup>
       <_HostKey Condition=" $([MSBuild]::IsOSPlatform('Windows')) ">windows</_HostKey>
       <_HostKey Condition=" $([MSBuild]::IsOSPlatform('OSX')) ">osx</_HostKey>
@@ -13,5 +13,7 @@
 
       <BaseIntermediateOutputPath>obj/$(_HostKey)/</BaseIntermediateOutputPath>
       <BaseOutputPath>bin/$(_HostKey)/</BaseOutputPath>
+
+      <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
    </PropertyGroup>
 </Project>
