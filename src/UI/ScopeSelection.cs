@@ -61,6 +61,7 @@ internal sealed class ScopeSelection
    internal bool Armed { get; private set; }
 
    private Vector2 lastMousePos;
+   private float lastScrollPos;
 
    /// <summary>Row to highlight and to activate on <c>&lt;return&gt;</c>;
    /// <c>null</c> ⇒ no-op.</summary>
@@ -69,13 +70,16 @@ internal sealed class ScopeSelection
    /// <param name="mousePos">Stored as the baseline for the next
    /// <see cref="PollMouse"/>'s motion check, so the open frame doesn't
    /// arm when the cursor was already over a row.</param>
-   internal void Reset(Vector2 mousePos)
+   /// <param name="scrollPos">Normalized vertical scroll position;
+   /// stored so the open frame doesn't trip the scrolled-baseline check.</param>
+   internal void Reset(Vector2 mousePos, float scrollPos)
    {
       Attention = Source.Keyboard;
       KeyboardRow = 0;
       MouseRow = null;
       Armed = false;
       lastMousePos = mousePos;
+      lastScrollPos = scrollPos;
    }
 
    /// <summary>Sets <see cref="KeyboardRow"/> (wrapping modulo
@@ -94,21 +98,35 @@ internal sealed class ScopeSelection
       KeyboardRow = Wrap(KeyboardRow, rowCount);
    }
 
+   /// <param name="scrollPos">Normalized vertical scroll position; changes when
+   /// wheel input or inertia moves the row list under a stationary cursor; and
+   /// a trigger to recompute <see cref="MouseRow"/>.</param>
    /// <param name="rowAt">Row index under <paramref name="pos"/>, or
    /// <c>null</c>.</param>
    /// <param name="inPanel">Whether <paramref name="pos"/> is inside the
    /// scope panel.</param>
    [PerformanceSensitive("scope-overlay-per-frame")]
-   internal void PollMouse(Vector2 pos, Func<Vector2, int?> rowAt, Func<Vector2, bool> inPanel)
+   internal void PollMouse(
+      Vector2 pos,
+      float scrollPos,
+      Func<Vector2, int?> rowAt,
+      Func<Vector2, bool> inPanel
+   )
    {
-      bool moved = pos != lastMousePos;
+      bool mouseMoved = pos != lastMousePos;
+      bool scrolled = scrollPos != lastScrollPos;
       lastMousePos = pos;
-      if (moved)
+      lastScrollPos = scrollPos;
+
+      if (!mouseMoved && !scrolled)
+         return;
+
+      if (mouseMoved)
          Armed = true;
 
       MouseRow = rowAt(pos);
 
-      if (moved)
+      if (mouseMoved)
       {
          if (MouseRow.HasValue)
             Attention = Source.Mouse;

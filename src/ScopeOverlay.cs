@@ -59,6 +59,7 @@ internal sealed class ScopeOverlay : KScreen
    private TMP_InputField inputField;
    private RectTransform sectionsContent;
    private RectTransform viewportRT;
+   private ScrollRect bodyScroll;
    private GameObject emptyState;
    private bool suppressEndEditHandling;
    private readonly List<SectionWidget> sections = new(32);
@@ -138,7 +139,7 @@ internal sealed class ScopeOverlay : KScreen
 
       inputField.text = "";
       FocusInput();
-      selection.Reset(Input.mousePosition);
+      selection.Reset(Input.mousePosition, CurrentScrollPos());
       nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
       findRowAtDelegate = FindRowAt;
       isPointerOverPanelDelegate = IsPointerOverPanel;
@@ -200,6 +201,11 @@ internal sealed class ScopeOverlay : KScreen
 
    private bool IsPointerOverPanel() => IsPointerOverPanel(Input.mousePosition);
 
+   // Normalized vertical scroll; ~[0..1]-ish. (0 during buildUI; slightly
+   // over/under during elastic overscrolling)
+   private float CurrentScrollPos() =>
+      bodyScroll != null ? bodyScroll.verticalNormalizedPosition : 0f;
+
    [PerformanceSensitive("scope-overlay-per-frame")]
    private bool IsPointerOverPanel(Vector2 screenPos)
    {
@@ -228,7 +234,12 @@ internal sealed class ScopeOverlay : KScreen
    //      the contract for "most-recent input wins"
    public void Update()
    {
-      selection.PollMouse(Input.mousePosition, findRowAtDelegate, isPointerOverPanelDelegate);
+      selection.PollMouse(
+         Input.mousePosition,
+         CurrentScrollPos(),
+         findRowAtDelegate,
+         isPointerOverPanelDelegate
+      );
 
       if (Time.unscaledTime >= nextStateRefreshAt)
       {
@@ -807,6 +818,7 @@ internal sealed class ScopeOverlay : KScreen
       scrollbarComponent.size = 0.25f;
 
       var scrollRect = body.GetComponent<ScrollRect>();
+      bodyScroll = scrollRect;
       scrollRect.viewport = vrt;
       scrollRect.content = sectionsContent;
       scrollRect.horizontal = false;
