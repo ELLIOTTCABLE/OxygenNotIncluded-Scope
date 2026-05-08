@@ -75,6 +75,10 @@ internal sealed class ScopeOverlay : KScreen
    private int resultsFingerprint;
    private bool hasResultsFingerprint;
 
+   // Delegate caches to avoid instance-allocations (HAA0602)
+   private Func<Vector2, int?> findRowAtDelegate;
+   private Func<Vector2, bool> isPointerOverPanelDelegate;
+
    // Sort key 60 sits above EDITING_SCREEN (50) and below MODAL (100). Receives input
    // before BuildingGroupScreen's KInputTextField (sort 0) per KScreenManager's
    // reverse-stack dispatch (top-most first). May need tweaking.
@@ -136,6 +140,8 @@ internal sealed class ScopeOverlay : KScreen
       FocusInput();
       selection.Reset(Input.mousePosition);
       nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
+      findRowAtDelegate = FindRowAt;
+      isPointerOverPanelDelegate = IsPointerOverPanel;
       RefreshActionsAndResults();
    }
 
@@ -222,7 +228,7 @@ internal sealed class ScopeOverlay : KScreen
    //      the contract for "most-recent input wins"
    public void Update()
    {
-      selection.PollMouse(Input.mousePosition, FindRowAt, IsPointerOverPanel);
+      selection.PollMouse(Input.mousePosition, findRowAtDelegate, isPointerOverPanelDelegate);
 
       if (Time.unscaledTime >= nextStateRefreshAt)
       {
