@@ -80,7 +80,6 @@ internal static class ScopeUiDefaults
    public static readonly Vector2 ScrollbarHandleInset = new Vector2(-4f, -8f);
 
    public static readonly float ScrollElasticity = 0.2f;
-   public static readonly float ScrollSensitivity = 1f; // floor-clamped to RowHeight at use
    public static readonly float ScrollDecelerationRate = 0.02f;
    public static readonly bool ScrollInertia = true;
 }

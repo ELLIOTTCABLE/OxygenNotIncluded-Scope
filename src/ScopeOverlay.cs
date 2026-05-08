@@ -686,7 +686,7 @@ internal sealed class ScopeOverlay : KScreen
          typeof(RectTransform),
          typeof(LayoutElement),
          typeof(Image),
-         typeof(ScrollRect)
+         typeof(KScrollRect)
       );
       body.transform.SetParent(parent, worldPositionStays: false);
 
@@ -811,10 +811,6 @@ internal sealed class ScopeOverlay : KScreen
       scrollRect.elasticity = OniUiTokens.ScrollElasticity;
       scrollRect.inertia = OniUiTokens.ScrollInertia;
       scrollRect.decelerationRate = OniUiTokens.ScrollDecelerationRate;
-      scrollRect.scrollSensitivity = Mathf.Max(
-         OniUiTokens.ScrollSensitivity,
-         OniUiTokens.RowHeight
-      );
    }
 
    private void RebuildSections()

@@ -94,7 +94,6 @@ internal static class OniUiTokens
    private static Vector2? _scrollbarHandleInset;
 
    private static float? _scrollElasticity;
-   private static float? _scrollSensitivity;
    private static float? _scrollDecelerationRate;
    private static bool? _scrollInertia;
 
@@ -274,8 +273,6 @@ internal static class OniUiTokens
 
    public static float ScrollElasticity =>
       CacheOpt(ref _scrollElasticity, Lift.ScrollElasticity, ScopeUiDefaults.ScrollElasticity);
-   public static float ScrollSensitivity =>
-      CacheOpt(ref _scrollSensitivity, Lift.ScrollSensitivity, ScopeUiDefaults.ScrollSensitivity);
    public static float ScrollDecelerationRate =>
       CacheOpt(
          ref _scrollDecelerationRate,
@@ -542,8 +539,6 @@ internal static class OniUiTokens
       public static Vector2? ClearButtonFgInset() => Inset(ClearFg()?.transform as RectTransform);
 
       public static float? ScrollElasticity() => MainScroll()?.elasticity;
-
-      public static float? ScrollSensitivity() => MainScroll()?.scrollSensitivity;
 
       public static float? ScrollDecelerationRate() => MainScroll()?.decelerationRate;
 
@@ -830,7 +825,6 @@ internal static class OniUiTokens
       LogVec2(sb, "ScrollbarHandleInset", ScrollbarHandleInset, _scrollbarHandleInset.HasValue);
 
       LogFloat(sb, "ScrollElasticity", ScrollElasticity, _scrollElasticity.HasValue);
-      LogFloat(sb, "ScrollSensitivity", ScrollSensitivity, _scrollSensitivity.HasValue);
       LogFloat(
          sb,
          "ScrollDecelerationRate",
