@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
+using Roslyn.Utilities;
 
 namespace ScopeMod.Mru;
 
@@ -66,6 +67,7 @@ internal sealed class MruStore
    public IReadOnlyList<string> KeysIn(string ns) =>
       state.Lists.TryGetValue(ns ?? "", out var list) ? (IReadOnlyList<string>)list : [];
 
+   [PerformanceSensitive("scope-search-hot-path")]
    public int IndexOf(string ns, string key)
    {
       if (string.IsNullOrEmpty(key))

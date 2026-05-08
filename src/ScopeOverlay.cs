@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using PeterHan.PLib.UI;
+using Roslyn.Utilities;
 using ScopeMod.Mru;
 using ScopeMod.UI;
 using TMPro;
@@ -193,6 +194,7 @@ internal sealed class ScopeOverlay : KScreen
 
    private bool IsPointerOverPanel() => IsPointerOverPanel(Input.mousePosition);
 
+   [PerformanceSensitive("scope-overlay-per-frame")]
    private bool IsPointerOverPanel(Vector2 screenPos)
    {
       var rt = (RectTransform)transform;
@@ -273,6 +275,7 @@ internal sealed class ScopeOverlay : KScreen
    // row scrolled above/below the visible region - e.g. the subheader.)
    // RectangleContainsScreenPoint ignores parent masks, so we filter by the
    // viewport before iterating
+   [PerformanceSensitive("scope-overlay-per-frame")]
    private int? FindRowAt(Vector2 screenPos)
    {
       if (
@@ -291,6 +294,7 @@ internal sealed class ScopeOverlay : KScreen
    // Single render site for the highlight visual. eff==null is valid and
    // means no row is currently selected (mouse-attentive but cursor in a
    // gap); every row gets SetHighlighted(false).
+   [PerformanceSensitive("scope-overlay-per-frame")]
    private void RenderHighlight()
    {
       var eff = selection.Effective;
@@ -404,6 +408,7 @@ internal sealed class ScopeOverlay : KScreen
       RenderHighlight();
    }
 
+   [PerformanceSensitive("scope-search-hot-path")]
    private static int FingerprintResults(List<RankedResult> results)
    {
       var hc = new HashCode();
@@ -1194,6 +1199,7 @@ internal sealed class ScopeOverlay : KScreen
       private readonly bool isAvailable;
       public IQuickAction Action { get; }
 
+      [PerformanceSensitive("scope-overlay-per-frame")]
       public bool ContainsScreenPoint(Vector2 screenPos) =>
          rt != null && RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, null);
 
@@ -1307,6 +1313,7 @@ internal sealed class ScopeOverlay : KScreen
          this.isAvailable = isAvailable;
       }
 
+      [PerformanceSensitive("scope-overlay-per-frame")]
       public void SetHighlighted(bool on)
       {
          background.color = isAvailable

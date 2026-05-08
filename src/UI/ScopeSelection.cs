@@ -1,4 +1,5 @@
 using System;
+using Roslyn.Utilities;
 using UnityEngine;
 
 namespace ScopeMod.UI;
@@ -97,6 +98,7 @@ internal sealed class ScopeSelection
    /// <c>null</c>.</param>
    /// <param name="inPanel">Whether <paramref name="pos"/> is inside the
    /// scope panel.</param>
+   [PerformanceSensitive("scope-overlay-per-frame")]
    internal void PollMouse(Vector2 pos, Func<Vector2, int?> rowAt, Func<Vector2, bool> inPanel)
    {
       bool moved = pos != lastMousePos;

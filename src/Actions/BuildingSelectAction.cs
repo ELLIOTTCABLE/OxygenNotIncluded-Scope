@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
+using Roslyn.Utilities;
 using UnityEngine;
 
 namespace ScopeMod;
@@ -50,10 +51,12 @@ internal sealed class BuildingSelectAction : IQuickAction
    public int SearchDemotionTier => IsCurrentlyAvailable ? 0 : 1;
    public string SearchDemotionSuffix =>
       requirementsState == PlanScreen.RequirementsState.Tech ? "unresearched" : "unavailable";
-   public string MruKey => "building:" + def.PrefabID;
    public System.Collections.Generic.IReadOnlyList<string> SearchTerms => def.SearchTerms;
    public int RenderStateHash => (int)requirementsState;
    public PlanScreen.RequirementsState RequirementsState => requirementsState;
+
+   [PerformanceSensitive("scope-search-hot-path")]
+   public string MruKey => "building:" + def.PrefabID;
 
    // Defer to vanilla's `BuildingDefCache` so we score the same sources
    // (currently [name, desc, alias, effect, recipe name+desc]) the build
@@ -68,6 +71,7 @@ internal sealed class BuildingSelectAction : IQuickAction
    private SearchUtil.MatchCache cachedSubMatchCache;
    private bool subMatchResolved;
 
+   [PerformanceSensitive("scope-search-hot-path")]
    public int Score(string canonicalQueryUpper)
    {
       var defCache = ResolveDefCache();

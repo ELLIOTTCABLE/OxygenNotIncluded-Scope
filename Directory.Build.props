@@ -130,6 +130,15 @@
    <!-- MinVer derives <Version> / <AssemblyVersion> / <FileVersion> from the
       latest reachable git tag matching MinVerTagPrefix. Tag is the single
       source of truth; no manual sync between csproj and tags. -->
+
+   <ItemGroup>
+      <PackageReference
+         Include="Microsoft.CodeAnalysis.PerformanceSensitiveAnalyzers"
+         Version="3.3.1"
+         PrivateAssets="all"
+      />
+   </ItemGroup>
+
    <ItemGroup>
       <PackageReference Include="MinVer" Version="5.0.0">
          <PrivateAssets>all</PrivateAssets>

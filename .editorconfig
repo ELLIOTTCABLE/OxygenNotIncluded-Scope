@@ -1,18 +1,39 @@
 [*.{cs,csx}]
-# Csharpier demands:
+### Csharpier demands:
 charset = utf-8
 insert_final_newline = true
 trim_trailing_whitespace = true
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 
-# Csharpier config:
+### Csharpier conf:
 indent_style = space
 indent_size = 3
 max_line_length = 100
 
-# Lint:
+## Lint:
 csharp_style_prefer_local_over_anonymous_function = false
+
+### Microsoft.CodeAnalysis.PerformanceSensitiveAnalyzers:
+# See the [PerformanceSensitive]-annotated members; HAA0502 is silenced because
+# the analyzer mis-fires on the attribute application itself:
+#     <https://github.com/dotnet/roslyn-analyzers/issues/6851>
+dotnet_diagnostic.HAA0101.severity = warning
+dotnet_diagnostic.HAA0102.severity = warning
+dotnet_diagnostic.HAA0201.severity = warning
+dotnet_diagnostic.HAA0202.severity = warning
+dotnet_diagnostic.HAA0301.severity = warning
+dotnet_diagnostic.HAA0302.severity = warning
+dotnet_diagnostic.HAA0303.severity = warning
+dotnet_diagnostic.HAA0401.severity = warning
+dotnet_diagnostic.HAA0501.severity = warning
+dotnet_diagnostic.HAA0502.severity = none
+dotnet_diagnostic.HAA0503.severity = warning
+dotnet_diagnostic.HAA0506.severity = warning
+dotnet_diagnostic.HAA0601.severity = warning
+dotnet_diagnostic.HAA0602.severity = warning
+dotnet_diagnostic.HAA0603.severity = warning
+dotnet_diagnostic.HAA0604.severity = warning
 
 [*.{config,csproj,props,slnx,targets,xaml,xml}]
 indent_style = space
