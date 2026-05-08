@@ -82,8 +82,20 @@ internal sealed class BuildingSelectAction : IQuickAction
    private SearchUtil.MatchCache cachedSubMatchCache;
    private bool subMatchResolved;
 
+   private (string Query, int Score)? memo;
+
    [PerformanceSensitive("scope-search-hot-path")]
    public int Score(string canonicalQueryUpper)
+   {
+      if (memo is { Query: var q, Score: var s } && q == canonicalQueryUpper)
+         return s;
+      var fresh = score(canonicalQueryUpper);
+      memo = (canonicalQueryUpper, fresh);
+      return fresh;
+   }
+
+   [PerformanceSensitive("scope-search-hot-path")]
+   public int score(string canonicalQueryUpper)
    {
       var defCache = ResolveDefCache();
       defCache.Bind(canonicalQueryUpper);
