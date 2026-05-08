@@ -68,7 +68,7 @@ internal sealed class ScopeOverlay : KScreen
 
    private List<RankedResult> currentResults = new(MAX_RESULTS);
    private readonly ScopeSelection selection = new();
-   private List<IQuickAction> allActions;
+   private readonly List<IQuickAction> allActions = new(256);
    private float nextStateRefreshAt;
 
    private int caretBeforeArrowKeyOverride = -1;
@@ -447,7 +447,7 @@ internal sealed class ScopeOverlay : KScreen
    // separately.
    private void RefreshActionsAndResults()
    {
-      allActions = new List<IQuickAction>(256);
+      allActions.Clear();
       foreach (var provider in ScopeProviders.All)
       foreach (var action in provider.Enumerate())
          allActions.Add(action);
