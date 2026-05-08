@@ -19,6 +19,8 @@ internal sealed class BuildingSelectAction : IQuickAction
    private readonly string subcategoryKey;
    private readonly string subcategoryTitle;
    private readonly PlanScreen.RequirementsState requirementsState;
+   private readonly string mruKey;
+   private readonly string displayName;
 
    public BuildingSelectAction(
       BuildingDef def,
@@ -31,6 +33,8 @@ internal sealed class BuildingSelectAction : IQuickAction
       this.subcategoryKey = subcategoryKey;
       this.subcategoryTitle = subcategoryTitle;
       this.requirementsState = requirementsState;
+      this.mruKey = "building:" + def.PrefabID;
+      this.displayName = STRINGS.UI.StripLinkFormatting(STRINGS.UI.StripStyleFormatting(def.Name));
    }
 
    // TODO: surface this as a config option (and pair it with an "open research tree
@@ -40,8 +44,6 @@ internal sealed class BuildingSelectAction : IQuickAction
    // TODO: conf; this allows selection of a building even when no appropriate material is discovered.
    private const bool AllowGhostsWithoutDiscoveredMaterial = true;
 
-   public string DisplayName =>
-      STRINGS.UI.StripLinkFormatting(STRINGS.UI.StripStyleFormatting(def.Name));
    public Sprite Sprite => def.GetUISprite();
    public string SubcategoryKey => subcategoryKey;
    public string SubcategoryTitle => subcategoryTitle;
@@ -56,7 +58,10 @@ internal sealed class BuildingSelectAction : IQuickAction
    public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
    [PerformanceSensitive("scope-search-hot-path")]
-   public string MruKey => "building:" + def.PrefabID;
+   public string MruKey => mruKey;
+
+   [PerformanceSensitive("scope-search-hot-path")]
+   public string DisplayName => displayName;
 
    // Defer to vanilla's `BuildingDefCache` so we score the same sources
    // (currently [name, desc, alias, effect, recipe name+desc]) the build
