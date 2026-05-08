@@ -1,10 +1,23 @@
 using System.Collections.Generic;
+using Roslyn.Utilities;
 using ScopeMod.Mru;
 
 namespace ScopeMod;
 
 internal static class ScopeSearch
 {
+   private static readonly Dictionary<IQuickAction, string> canonicalDisplayNames = [];
+
+   [PerformanceSensitive("scope-search-hot-path")]
+   private static string CanonicalOf(IQuickAction action)
+   {
+      if (canonicalDisplayNames.TryGetValue(action, out var cached))
+         return cached;
+      var canon = SearchUtil.Canonicalize(action.DisplayName);
+      canonicalDisplayNames[action] = canon;
+      return canon;
+   }
+
    public static List<RankedResult> Rank(
       string query,
       IList<IQuickAction> actions,
@@ -64,7 +77,7 @@ internal static class ScopeSearch
       int exactIdx = -1;
       for (int i = 0; i < actions.Count; i++)
       {
-         if (SearchUtil.Canonicalize(actions[i].DisplayName) == canonQuery)
+         if (CanonicalOf(actions[i]) == canonQuery)
          {
             exactIdx = i;
             break;
