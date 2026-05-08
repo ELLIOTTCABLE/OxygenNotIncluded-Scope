@@ -4,19 +4,38 @@ namespace ScopeMod;
 
 internal sealed class BuildingActionProvider : IActionProvider
 {
+   private List<BuildingSelectAction> cached;
+   private PlanScreen cachedFor;
+
    public IEnumerable<IQuickAction> Enumerate()
    {
       var ps = PlanScreen.Instance;
       if (ps == null)
          yield break;
 
-      // Hard-exclude gate: identical to PlanScreen.BuildButtonList / CacheSearchCaches.
-      // Anything that fails here is never added to the vanilla button list at all —
-      // deprecated buildings, ShowInBuildMenu=false internal defs, and wrong-DLC content.
-      //
-      // Past the gate, RequirementsState is read from PlanScreen's rolling cache
-      // (_buildableStatesByID), updated 10 defs/frame by ScreenUpdate →
-      // RefreshBuildableStates while the game runs.
+      if (cached == null || !ReferenceEquals(cachedFor, ps))
+      {
+         cached = BuildCache(ps);
+         cachedFor = ps;
+      }
+
+      for (int i = 0; i < cached.Count; i++)
+      {
+         cached[i].RefreshState(ps);
+         yield return cached[i];
+      }
+   }
+
+   // Hard-exclude gate: identical to PlanScreen.BuildButtonList / CacheSearchCaches.
+   // Anything that fails here is never added to the vanilla button list at all —
+   // deprecated buildings, ShowInBuildMenu=false internal defs, and wrong-DLC content.
+   //
+   // Past the gate, RequirementsState is read from PlanScreen's rolling cache
+   // (_buildableStatesByID), updated 10 defs/frame by ScreenUpdate →
+   // RefreshBuildableStates while the game runs.
+   private static List<BuildingSelectAction> BuildCache(PlanScreen ps)
+   {
+      var list = new List<BuildingSelectAction>(256);
       var seen = new HashSet<string>();
       foreach (var planInfo in TUNING.BUILDINGS.PLANORDER)
       {
@@ -38,9 +57,10 @@ internal sealed class BuildingActionProvider : IActionProvider
 
             var subcategoryKey = string.IsNullOrEmpty(pair.Value) ? "default" : pair.Value;
             var subcategoryTitle = ResolveSubcategoryTitle(subcategoryKey);
-            yield return new BuildingSelectAction(def, subcategoryKey, subcategoryTitle, state);
+            list.Add(new BuildingSelectAction(def, subcategoryKey, subcategoryTitle, state));
          }
       }
+      return list;
    }
 
    private static string ResolveSubcategoryTitle(string subcategoryKey)

@@ -18,7 +18,7 @@ internal sealed class BuildingSelectAction : IQuickAction
    private readonly BuildingDef def;
    private readonly string subcategoryKey;
    private readonly string subcategoryTitle;
-   private readonly PlanScreen.RequirementsState requirementsState;
+   private PlanScreen.RequirementsState requirementsState;
    private readonly string mruKey;
    private readonly string displayName;
 
@@ -35,6 +35,12 @@ internal sealed class BuildingSelectAction : IQuickAction
       this.requirementsState = requirementsState;
       this.mruKey = "building:" + def.PrefabID;
       this.displayName = STRINGS.UI.StripLinkFormatting(STRINGS.UI.StripStyleFormatting(def.Name));
+   }
+
+   [PerformanceSensitive("scope-search-hot-path")]
+   public void RefreshState(PlanScreen ps)
+   {
+      requirementsState = ps.GetBuildableState(def);
    }
 
    // TODO: surface this as a config option (and pair it with an "open research tree
