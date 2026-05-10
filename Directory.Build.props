@@ -75,6 +75,8 @@
          <ExcludeAssets>runtime</ExcludeAssets>
       </PackageReference>
       <Publicize Include="Assembly-CSharp;Assembly-CSharp-firstpass" />
+      <!-- Avoid CS0229 conflicts from OnDiscover() -->
+      <DoNotPublicize Include="Assembly-CSharp:DiscoveredResources.OnDiscover" />
    </ItemGroup>
 
    <ItemGroup>

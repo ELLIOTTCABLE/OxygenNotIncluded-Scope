@@ -20,7 +20,6 @@ internal sealed class ScopeOverlay : KScreen
    private const int MAX_RESULTS = 120;
    private const float PANEL_WIDTH = 520f;
    private const float PANEL_HEIGHT = 560f;
-   private const float STATE_REFRESH_INTERVAL_SECONDS = 0.25f;
 
    private static ScopeOverlay liveInstance;
 
@@ -69,7 +68,7 @@ internal sealed class ScopeOverlay : KScreen
    private List<RankedResult> currentResults = new(MAX_RESULTS);
    private readonly ScopeSelection selection = new();
    private readonly List<IQuickAction> allActions = new(256);
-   private float nextStateRefreshAt;
+   private readonly List<ProviderSession> providerSessions = new(8);
 
    private int caretBeforeArrowKeyOverride = -1;
 
@@ -140,17 +139,42 @@ internal sealed class ScopeOverlay : KScreen
       inputField.text = "";
       FocusInput();
       selection.Reset(Input.mousePosition, CurrentScrollPos());
-      nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
       findRowAtDelegate = FindRowAt;
       isPointerOverPanelDelegate = IsPointerOverPanel;
-      RefreshActionsAndResults();
+
+      BeginProviderSessions();
+
+      // Initial population; enumerate every provider once and `Rank`
+      RebuildAllActionsAndRank();
    }
 
    public override void OnDeactivate()
    {
+      EndProviderSessions();
+
       base.OnDeactivate();
       if (liveInstance == this)
          liveInstance = null;
+   }
+
+   private void BeginProviderSessions()
+   {
+      providerSessions.Clear();
+      float now = Time.unscaledTime;
+      foreach (var p in ScopeProviders.All)
+      {
+         var session = new ProviderSession(p);
+         session.BeginSession(now);
+         providerSessions.Add(session);
+      }
+   }
+
+   private void EndProviderSessions()
+   {
+      for (int i = 0; i < providerSessions.Count; i++)
+         providerSessions[i].EndSession();
+      providerSessions.Clear();
+      allActions.Clear();
    }
 
    // Defensive consumption at the Klei pipeline so letter keys don't fire
@@ -227,7 +251,7 @@ internal sealed class ScopeOverlay : KScreen
    //
    // NOTE: Ordering and timing sensitive;
    //   1. PollMouse: picks up cursor delta from the previous frame
-   //   2. Heartbeat tick: may rebuild rows; preserves Attention
+   //   2. Provider tick: re-enumerate dirty providers; preserves Attention
    //   3. RenderHighlight: paints whatever the above resolved to
    //   4. Keyboard handling (arrows, click-outside): last, so a same-frame
    //      arrow-press sets Attention=Keyboard *after* PollMouse, which is
@@ -241,11 +265,7 @@ internal sealed class ScopeOverlay : KScreen
          isPointerOverPanelDelegate
       );
 
-      if (Time.unscaledTime >= nextStateRefreshAt)
-      {
-         nextStateRefreshAt = Time.unscaledTime + STATE_REFRESH_INTERVAL_SECONDS;
-         RefreshActionsAndResults();
-      }
+      TickProviders();
 
       RenderHighlight();
 
@@ -438,21 +458,49 @@ internal sealed class ScopeOverlay : KScreen
       return hc.ToHashCode();
    }
 
-   // Heartbeat path (and initial population from OnActivate). Re-enumerate
-   // providers so RequirementsState tracks live game state (materials,
-   // research, world) while the overlay is open. Any resulting rebuild is
-   // explicitly NOT user input: Attention must survive the tick so a mouse
-   // hover doesn't get clobbered every 0.25s. User-initiated rebuilds go
-   // through HandleInputValueChanged, which flips Attention=Keyboard
-   // separately.
-   private void RefreshActionsAndResults()
+   // Steady-state/zero-alloc tick; every frame,
+   //  - poll opt-in `OnPoll` providers so they can update their dirty;
+   //  - and `RebuildAllActionsAndRank` if any (polled or evented) provider
+   //    dirtied.
+   //
+   // (`UpdateResults` retains its fingerprinting mechanism as a
+   // second-line-of-defense; UI won't rebuild even if dirtied unless the
+   // dirty-state changes the fingerprint.)
+   private void TickProviders()
    {
-      allActions.Clear();
-      foreach (var provider in ScopeProviders.All)
-      foreach (var action in provider.Enumerate())
-         allActions.Add(action);
+      float now = Time.unscaledTime;
+      bool anyDirty = false;
+      for (int i = 0; i < providerSessions.Count; i++)
+      {
+         providerSessions[i].TickPoll(now);
+         if (providerSessions[i].Dirty)
+            anyDirty = true;
+      }
 
-      UpdateResults(inputField != null ? inputField.text : "");
+      if (anyDirty)
+         RebuildAllActionsAndRank();
+   }
+
+   // NOTE: provider-rebuilds are explicitly NOT input: Attention must survive
+   //    so a mouse hover doesn't get clobbered. User-initiated rebuilds go
+   //    through `HandleInputValueChanged` which flips Attention=Keyboard.
+   private void RebuildAllActionsAndRank()
+   {
+      for (int i = 0; i < providerSessions.Count; i++)
+      {
+         if (providerSessions[i].Dirty)
+            providerSessions[i].RebuildCache();
+      }
+
+      allActions.Clear();
+      for (int i = 0; i < providerSessions.Count; i++)
+      {
+         var cache = providerSessions[i].CachedActions;
+         for (int j = 0; j < cache.Count; j++)
+            allActions.Add(cache[j]);
+      }
+
+      UpdateResults(inputField?.text ?? "");
    }
 
    private void BuildUI()
