@@ -5,6 +5,17 @@ namespace ScopeMod;
 
 internal sealed class PanelActionProvider : IActionProvider
 {
+   // companion to the always-available "Supply-closet panel" browse action.
+   private static readonly CallbackAction ClaimBlueprintsAction = new CallbackAction(
+      displayName: "Claim new blueprints!",
+      subcategoryKey: "panels",
+      subcategoryTitle: "panels",
+      mruKey: "panel:claim-blueprints",
+      invoke: () => KleiItemDropScreen.Instance?.Show(),
+      sortTier: SortTier.Pinned,
+      aliases: new[] { "blueprints", "claim", "drops", "klei", "items", "unlock" }
+   );
+
    private List<CallbackAction> cached;
    private ManagementMenu cachedFor;
 
@@ -18,6 +29,16 @@ internal sealed class PanelActionProvider : IActionProvider
       ctx.Subscribe((int)GameHashes.ActiveWorldChanged, _ => ctx.MarkDirty());
       ctx.Subscribe((int)GameHashes.ToggleSandbox, _ => ctx.MarkDirty());
       ctx.Subscribe((int)GameHashes.DebugInsantBuildModeChanged, _ => ctx.MarkDirty());
+
+      // Klei-store inventory updates ride a separate non-Game-hash bus;
+      // this is the same notification stream `KleiItemsStatusRefresher`
+      // consumes for the top-left button's lit/greyed state.
+      //
+      // NOTE: local assignment avoids addtl. delegate instances; prevents
+      //       remove from no-op'ing
+      KleiItems.InventoryRefreshCallback onBlueprintArrival = ctx.MarkDirty;
+      KleiItems.AddInventoryRefreshCallback(onBlueprintArrival);
+      ctx.Defer(() => KleiItems.RemoveInventoryRefreshCallback(onBlueprintArrival));
    }
 
    public void OnDeactivate()
@@ -42,6 +63,11 @@ internal sealed class PanelActionProvider : IActionProvider
 
       for (int i = 0; i < cached.Count; i++)
          yield return cached[i];
+
+      // Pinned new-arrival action; only present when claimable (i.e.
+      // basegame-UI-button isn't greyed out)
+      if (KleiItemDropScreen.HasItemsToShow())
+         yield return ClaimBlueprintsAction;
    }
 
    private static List<CallbackAction> BuildCache(ManagementMenu mm)
@@ -58,12 +84,92 @@ internal sealed class PanelActionProvider : IActionProvider
          mm.starmapInfo,
          ManagementMenu.StarmapAvailable
       );
-      AddPanel(list, mm, "Cluster Map panel", "panel:clustermap", mm.clusterMapInfo);
+      AddPanel(list, mm, "Cluster map panel", "panel:clustermap", mm.clusterMapInfo);
       AddPanel(list, mm, "Priorities panel", "panel:priorities", mm.jobsInfo);
       AddPanel(list, mm, "Reports panel", "panel:reports", mm.reportsInfo);
       AddPanel(list, mm, "Consumables panel", "panel:consumables", mm.consumablesInfo);
       AddPanel(list, mm, "Schedule panel", "panel:schedule", mm.scheduleInfo);
       AddPanel(list, mm, "Vitals panel", "panel:vitals", mm.vitalsInfo);
+
+      // Addtl. modal panels; not in ManagementMenu's ScreenInfoMatch, so they
+      // bypass the AddPanel helper. Per-item providers (jump-to-diagnostic,
+      // jump-to-resource) will *not* duplicate these flat ("open panel, no
+      // specific target") entries.
+      list.Add(
+         new CallbackAction(
+            displayName: "Diagnostics panel",
+            subcategoryKey: "panels",
+            subcategoryTitle: "panels",
+            mruKey: "panel:diagnostics",
+            invoke: () =>
+            {
+               var s = AllDiagnosticsScreen.Instance;
+               if (s != null && !s.IsScreenActive())
+                  s.Show(true);
+            }
+         )
+      );
+
+      list.Add(
+         new CallbackAction(
+            displayName: "Resources panel",
+            subcategoryKey: "panels",
+            subcategoryTitle: "panels",
+            mruKey: "panel:resources",
+            invoke: () =>
+            {
+               var s = AllResourcesScreen.Instance;
+               if (s != null && !s.IsScreenActive())
+                  s.Show(true);
+            }
+         )
+      );
+
+      // Supply closet is Klei's always-available blueprint-browser (full
+      // inventory, dupes, outfits). Companion to the "Claim new blueprints"
+      // pinned entry (corresponding to `KleiItemDropScreen`).
+      list.Add(
+         new CallbackAction(
+            displayName: "Supply-closet panel",
+            subcategoryKey: "panels",
+            subcategoryTitle: "panels",
+            mruKey: "panel:blueprints",
+            invoke: () => LockerMenuScreen.Instance?.Show(),
+            aliases: new[]
+            {
+               "blueprints",
+               "drops",
+               "klei",
+               "items",
+               "wardrobe",
+               "outfits",
+               "duplicants",
+            }
+         )
+      );
+
+      list.Add(
+         new CallbackAction(
+            displayName: "Colony summary panel",
+            subcategoryKey: "panels",
+            subcategoryTitle: "panels",
+            mruKey: "panel:colony-summary",
+            invoke: () =>
+            {
+               var pauseScreen = PauseScreen.Instance;
+               if (pauseScreen == null)
+                  return;
+               var data = RetireColonyUtility.GetCurrentColonyRetiredColonyData();
+               MainMenu.ActivateRetiredColoniesScreenFromData(
+                  pauseScreen.transform.parent.gameObject,
+                  data
+               );
+            },
+            isAvailable: () => PauseScreen.Instance != null,
+            aliases: new[] { "retired", "achievements" }
+         )
+      );
+
       return list;
    }
 

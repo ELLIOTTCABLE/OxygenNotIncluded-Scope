@@ -12,6 +12,7 @@ internal sealed class CallbackAction : IQuickAction
    private readonly SysAction invoke;
 
    private readonly System.Func<bool> isAvailable;
+   private readonly SortTier sortTier;
    private readonly SearchTerm[] searchTerms;
 
    public string DisplayName { get; }
@@ -20,7 +21,7 @@ internal sealed class CallbackAction : IQuickAction
    public string SubcategoryTitle { get; }
    public bool IsCurrentlyAvailable => isAvailable == null || isAvailable();
    public bool CanInvoke => IsCurrentlyAvailable && invoke != null;
-   public SortTier SortTier => IsCurrentlyAvailable ? SortTier.Normal : SortTier.Unavailable;
+   public SortTier SortTier => IsCurrentlyAvailable ? sortTier : SortTier.Unavailable;
    public string SearchDemotionSuffix => IsCurrentlyAvailable ? null : "unavailable";
    public string MruKey { get; }
    public IReadOnlyList<SearchTerm> SearchTerms => searchTerms;
@@ -34,6 +35,7 @@ internal sealed class CallbackAction : IQuickAction
       SysAction invoke,
       Sprite sprite = null,
       System.Func<bool> isAvailable = null,
+      SortTier sortTier = SortTier.Normal,
       IReadOnlyList<string> aliases = null
    )
    {
@@ -44,6 +46,7 @@ internal sealed class CallbackAction : IQuickAction
       Sprite = sprite;
       this.invoke = invoke;
       this.isAvailable = isAvailable;
+      this.sortTier = sortTier;
       this.searchTerms = BuildSearchTerms(displayName, subcategoryTitle, aliases);
    }
 
