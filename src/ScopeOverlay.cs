@@ -1390,6 +1390,7 @@ internal static class ScopeProviders
    public static readonly List<IActionProvider> All = new List<IActionProvider>
    {
       new BuildingActionProvider(),
+      new ToolActionProvider(),
    };
 }
 

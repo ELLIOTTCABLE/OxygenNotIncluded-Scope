@@ -10,13 +10,15 @@ namespace ScopeMod;
 internal sealed class CallbackAction : IQuickAction
 {
    private readonly SysAction invoke;
+
+   private readonly System.Func<bool> isAvailable;
    private readonly SearchTerm[] searchTerms;
 
    public string DisplayName { get; }
    public Sprite Sprite { get; }
    public string SubcategoryKey { get; }
    public string SubcategoryTitle { get; }
-   public bool IsCurrentlyAvailable { get; }
+   public bool IsCurrentlyAvailable => isAvailable == null || isAvailable();
    public bool CanInvoke => IsCurrentlyAvailable && invoke != null;
    public SortTier SortTier => IsCurrentlyAvailable ? SortTier.Normal : SortTier.Unavailable;
    public string SearchDemotionSuffix => IsCurrentlyAvailable ? null : "unavailable";
@@ -31,7 +33,7 @@ internal sealed class CallbackAction : IQuickAction
       string mruKey,
       SysAction invoke,
       Sprite sprite = null,
-      bool available = true,
+      System.Func<bool> isAvailable = null,
       IReadOnlyList<string> aliases = null
    )
    {
@@ -40,8 +42,8 @@ internal sealed class CallbackAction : IQuickAction
       SubcategoryTitle = subcategoryTitle;
       MruKey = mruKey;
       Sprite = sprite;
-      IsCurrentlyAvailable = available;
       this.invoke = invoke;
+      this.isAvailable = isAvailable;
       this.searchTerms = BuildSearchTerms(displayName, subcategoryTitle, aliases);
    }
 
