@@ -1391,6 +1391,7 @@ internal static class ScopeProviders
    {
       new BuildingActionProvider(),
       new ToolActionProvider(),
+      new OverlayActionProvider(),
    };
 }
 
