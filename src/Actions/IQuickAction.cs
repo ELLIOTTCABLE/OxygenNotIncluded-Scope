@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ScopeMod;
@@ -29,12 +30,14 @@ internal interface IQuickAction
    // Unavailable actions should remain visible but render in the disabled style.
    bool IsCurrentlyAvailable { get; }
 
-   // Search ordering only: larger values are pushed lower in typed results.
-   // This is intentionally separate from IsCurrentlyAvailable so we can support
-   // non-interactive-but-visible actions without forcing visual disable styling.
-   int SearchDemotionTier { get; }
+   // Provider-level 'sort tier' - the primary axis of comparison, for major
+   // things like "if there's a camera-return, it should basically always come
+   // first - the primary axis of comparison, for major things like "if there's
+   // a camera-return, it should basically always come first."
+   SortTier SortTier { get; }
 
-   // Optional suffix for demoted section title (e.g. "unresearched").
+   // Optional suffix for a demoted-tier section title (e.g. "unresearched").
+   // Null = no suffix; the UI uses the default-by-tier label.
    string SearchDemotionSuffix { get; }
 
    // Stable identifier used by the MRU store to bias ordering toward
@@ -47,14 +50,12 @@ internal interface IQuickAction
    // bare identifier that overlaps.
    string MruKey { get; }
 
-   // Per-query 0..100 relevance score; below SearchUtil.MATCH_SCORE_THRESHOLD
-   // drops the action from results.
-   //
-   // Each action picks its own policy - e.g. building actions defer to
-   // vanilla's BuildingDefCache for build-menu parity; some actions are free
-   // to use a looser policy (e.g. partial-match aliases) when there's no
-   // vanilla expectation to violate.
-   int Score(string canonicalQueryUpper);
+   // Strings to fuzzy-match against; combination of (string x tier). Provides a
+   // somewhat-indirect way for providers to tweak some of their
+   // actions'/search-strings results, without having to manually tune/tweak
+   // specific integer numbers against other providers; that stays the concern
+   // of the core search algo.
+   IReadOnlyList<SearchTerm> SearchTerms { get; }
 
    // Encodes the *mutable & visible* slice of state. Include anything that
    // can flip at runtime AND affects rendering; it's folded into a

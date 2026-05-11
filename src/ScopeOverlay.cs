@@ -904,12 +904,12 @@ internal sealed class ScopeOverlay : KScreen
 
          string key = baseKey;
          string title = baseTitle;
-         if (action.SearchDemotionTier > 0)
+         if (action.SortTier > SortTier.Normal)
          {
             var suffix = string.IsNullOrEmpty(action.SearchDemotionSuffix)
                ? "demoted"
                : action.SearchDemotionSuffix;
-            key = baseKey + "__demoted__" + action.SearchDemotionTier + "__" + suffix;
+            key = baseKey + "__demoted__" + (int)action.SortTier + "__" + suffix;
             title = baseTitle + " (" + suffix + ")";
          }
 

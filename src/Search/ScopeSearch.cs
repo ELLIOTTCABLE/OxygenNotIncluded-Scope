@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Roslyn.Utilities;
 using ScopeMod.Mru;
@@ -6,16 +7,70 @@ namespace ScopeMod;
 
 internal static class ScopeSearch
 {
-   private static readonly Dictionary<IQuickAction, string> canonicalDisplayNames = [];
+   // Per-tier calibration vs the raw `FuzzySearch` score. `_` arm catches the
+   // `default(SearchTerm).Tier` (`(SearchTier)0`) case.
+   private static int TierDelta(SearchTier tier) =>
+      tier switch
+      {
+         SearchTier.Primary => 0,
+         SearchTier.Secondary => -5,
+         SearchTier.Aux => -10,
+         // I'd love to log this but C# is stupid.
+         _ => int.MinValue / 2,
+      };
 
-   [PerformanceSensitive("scope-search-hot-path")]
-   private static string CanonicalOf(IQuickAction action)
+   private readonly struct ScoreCache
    {
-      if (canonicalDisplayNames.TryGetValue(action, out var cached))
-         return cached;
-      var canon = SearchUtil.Canonicalize(action.DisplayName);
-      canonicalDisplayNames[action] = canon;
-      return canon;
+      public readonly int Score;
+      public readonly bool IsExactPrimary;
+
+      public ScoreCache(int score, bool isExactPrimary)
+      {
+         Score = score;
+         IsExactPrimary = isExactPrimary;
+      }
+   }
+
+   // Tiny memoization for a stable canonicalized query (i.e., if a provider
+   // dirties without a keystroke) re-uses the scoring.
+   private static string cachedQuery;
+   private static readonly Dictionary<IQuickAction, ScoreCache> scoreCache = new(256);
+
+   private static MruStore cachedComparatorMru;
+   private static Comparison<RankedResult> cachedComparator;
+
+   private static Comparison<RankedResult> GetComparator(MruStore mru)
+   {
+      if (!ReferenceEquals(cachedComparatorMru, mru))
+      {
+         cachedComparatorMru = mru;
+         cachedComparator = (a, b) => CompareResults(a, b, mru);
+      }
+      return cachedComparator;
+   }
+
+   private static int CompareResults(RankedResult a, RankedResult b, MruStore mru)
+   {
+      int tierCmp = ((int)a.Action.SortTier).CompareTo((int)b.Action.SortTier);
+      if (tierCmp != 0)
+         return tierCmp;
+      int scoreCmp = b.Score.CompareTo(a.Score);
+      if (scoreCmp != 0)
+         return scoreCmp;
+      if (mru != null)
+      {
+         int aMru = mru.IndexOf(a.Action.MruKey ?? "");
+         int bMru = mru.IndexOf(b.Action.MruKey ?? "");
+         if (aMru != bMru)
+         {
+            if (aMru == -1)
+               return 1;
+            if (bMru == -1)
+               return -1;
+            return aMru - bMru;
+         }
+      }
+      return 0;
    }
 
    public static List<RankedResult> Rank(
@@ -74,64 +129,83 @@ internal static class ScopeSearch
 
       var canonQuery = SearchUtil.Canonicalize(query.Trim());
 
-      int exactIdx = -1;
-      for (int i = 0; i < actions.Count; i++)
+      if (canonQuery != cachedQuery)
       {
-         if (CanonicalOf(actions[i]) == canonQuery)
-         {
-            exactIdx = i;
-            break;
-         }
+         scoreCache.Clear();
+         cachedQuery = canonQuery;
       }
 
+      IQuickAction exactAction = null;
       var scored = new List<RankedResult>(actions.Count);
       for (int i = 0; i < actions.Count; i++)
       {
-         int score = actions[i].Score(canonQuery);
-         if (score >= SearchUtil.MATCH_SCORE_THRESHOLD)
-            scored.Add(new RankedResult(actions[i], score));
-      }
-      // MRU as score-tiebreak: among same tier + same fuzzy score, the
-      // more-recently-used item wins. Doesn't perturb fuzzy primary order
-      // — typing "lad" still puts "Ladder" ahead of less-matching items
-      // even if the user used some other building more recently.
-      scored.Sort(
-         (a, b) =>
+         var action = actions[i];
+         if (!scoreCache.TryGetValue(action, out var entry))
          {
-            int tierCmp = a.Action.SearchDemotionTier.CompareTo(b.Action.SearchDemotionTier);
-            if (tierCmp != 0)
-               return tierCmp;
-            int scoreCmp = b.Score.CompareTo(a.Score);
-            if (scoreCmp != 0)
-               return scoreCmp;
-            if (mru != null)
-            {
-               int aMru = mru.IndexOf(a.Action.MruKey ?? "");
-               int bMru = mru.IndexOf(b.Action.MruKey ?? "");
-               // Lower MRU index = more recent; -1 means "not in MRU at all".
-               if (aMru != bMru)
-               {
-                  if (aMru == -1)
-                     return 1;
-                  if (bMru == -1)
-                     return -1;
-                  return aMru - bMru;
-               }
-            }
-            return 0;
+            int s = ScoreAction(action, canonQuery, out bool ep);
+            entry = new ScoreCache(s, ep);
+            scoreCache[action] = entry;
          }
-      );
+         if (entry.Score != int.MinValue)
+            scored.Add(new RankedResult(action, entry.Score));
+         if (exactAction == null && entry.IsExactPrimary)
+            exactAction = action;
+      }
 
-      if (exactIdx >= 0)
+      // Sort policy:
+      // 1. `SortTier` (provider-declared; Pinned > Normal > Unavailable > Locked)
+      // 2. Base fuzzy score (per-source-tier, folded in by `ScoreAction`)
+      // 3. MRU recency (tiebreak)
+      //
+      // NOTE: MRU is currently a tiebreak (a higher-score non-MRU action still
+      //    beats a lower-score MRU action.) If frecency lifts MRU to a stronger
+      //    role later, I'll compose MRU INTO stage 2 (additive to the score.)
+
+      scored.Sort(GetComparator(mru));
+
+      if (exactAction != null)
       {
-         var exact = new RankedResult(actions[exactIdx], int.MaxValue);
-         scored.RemoveAll(r => ReferenceEquals(r.Action, exact.Action));
-         scored.Insert(0, exact);
+         for (int i = 0; i < scored.Count; i++)
+         {
+            if (ReferenceEquals(scored[i].Action, exactAction))
+            {
+               scored.RemoveAt(i);
+               break;
+            }
+         }
+         scored.Insert(0, new RankedResult(exactAction, int.MaxValue));
       }
 
       int take = System.Math.Min(scored.Count, limit);
       for (int i = 0; i < take; i++)
          results.Add(scored[i]);
       return results;
+   }
+
+   // Central scorer: max-of-sources with per-tier delta, threshold-filtered
+   // on the *adjusted* score (so a low-quality alias match doesn't sneak
+   // through as a misleading near-threshold hit). Side-output: did any
+   // `Primary` source exact-match the query?
+   [PerformanceSensitive("scope-search-hot-path")]
+   private static int ScoreAction(IQuickAction action, string canonQuery, out bool isExactPrimary)
+   {
+      isExactPrimary = false;
+      var sources = action.SearchTerms;
+      if (sources == null)
+         return int.MinValue;
+      int best = int.MinValue;
+      for (int i = 0; i < sources.Count; i++)
+      {
+         var src = sources[i];
+         if (string.IsNullOrEmpty(src.CanonText))
+            continue;
+         if (src.Tier == SearchTier.Primary && src.CanonText == canonQuery)
+            isExactPrimary = true;
+         int raw = FuzzySearch.ScoreCanonicalCandidate(canonQuery, src.CanonText).score;
+         int adjusted = raw + TierDelta(src.Tier);
+         if (adjusted >= SearchUtil.MATCH_SCORE_THRESHOLD && adjusted > best)
+            best = adjusted;
+      }
+      return best;
    }
 }

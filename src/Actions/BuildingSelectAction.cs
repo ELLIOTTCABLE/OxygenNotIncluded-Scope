@@ -21,6 +21,7 @@ internal sealed class BuildingSelectAction : IQuickAction
    private PlanScreen.RequirementsState requirementsState;
    private readonly string mruKey;
    private readonly string displayName;
+   private readonly SearchTerm[] searchTerms;
 
    public BuildingSelectAction(
       BuildingDef def,
@@ -35,6 +36,41 @@ internal sealed class BuildingSelectAction : IQuickAction
       this.requirementsState = requirementsState;
       this.mruKey = "building:" + def.PrefabID;
       this.displayName = STRINGS.UI.StripLinkFormatting(STRINGS.UI.StripStyleFormatting(def.Name));
+      this.searchTerms = BuildSearchTerms(displayName, subcategoryTitle, def.SearchTerms);
+   }
+
+   private static SearchTerm[] BuildSearchTerms(
+      string displayName,
+      string subcategoryTitle,
+      System.Collections.Generic.IReadOnlyList<string> defSearchTerms
+   )
+   {
+      var primaryCanon = SearchUtil.Canonicalize(displayName);
+      bool hasSubcat = !string.IsNullOrEmpty(subcategoryTitle) && subcategoryTitle != "default";
+      int auxCount = defSearchTerms?.Count ?? 0;
+      var sources = new SearchTerm[1 + (hasSubcat ? 1 : 0) + auxCount];
+      int i = 0;
+      sources[i++] = new SearchTerm(primaryCanon, SearchTier.Primary);
+      if (hasSubcat)
+         sources[i++] = new SearchTerm(
+            SearchUtil.Canonicalize(subcategoryTitle),
+            SearchTier.Secondary
+         );
+      // vanilla `BuildingDefCache.Bind` scores against `def.SearchTerms`
+      // internally: name, desc, alias, recipe. I'm treating as `Aux` because the
+      // user almost always recognizes `DisplayName` / subcategory before these;
+      // and further, the user *learns*, is-reminded-of, the "correct" name,
+      // every time they invoke and are presented with the canonical name as
+      // their typing is narrowing.
+      for (int j = 0; j < auxCount; j++)
+      {
+         var term = defSearchTerms[j];
+         if (!string.IsNullOrEmpty(term))
+            sources[i++] = new SearchTerm(SearchUtil.Canonicalize(term), SearchTier.Aux);
+      }
+      if (i < sources.Length)
+         System.Array.Resize(ref sources, i);
+      return sources;
    }
 
    [PerformanceSensitive("scope-search-hot-path")]
@@ -56,10 +92,16 @@ internal sealed class BuildingSelectAction : IQuickAction
    public bool IsCurrentlyAvailable => requirementsState == PlanScreen.RequirementsState.Complete;
    public bool CanInvoke =>
       AllowUnresearchedSelection || requirementsState != PlanScreen.RequirementsState.Tech;
-   public int SearchDemotionTier => IsCurrentlyAvailable ? 0 : 1;
+   public SortTier SortTier =>
+      requirementsState switch
+      {
+         PlanScreen.RequirementsState.Complete => SortTier.Normal,
+         PlanScreen.RequirementsState.Tech => SortTier.Locked,
+         _ => SortTier.Unavailable,
+      };
    public string SearchDemotionSuffix =>
       requirementsState == PlanScreen.RequirementsState.Tech ? "unresearched" : "unavailable";
-   public System.Collections.Generic.IReadOnlyList<string> SearchTerms => def.SearchTerms;
+   public System.Collections.Generic.IReadOnlyList<SearchTerm> SearchTerms => searchTerms;
    public int RenderStateHash => (int)requirementsState;
    public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
@@ -68,75 +110,6 @@ internal sealed class BuildingSelectAction : IQuickAction
 
    [PerformanceSensitive("scope-search-hot-path")]
    public string DisplayName => displayName;
-
-   // Defer to vanilla's `BuildingDefCache` so we score the same sources
-   // (currently [name, desc, alias, effect, recipe name+desc]) the build
-   // menu does.
-   //
-   // Regression: do not share PlanScreen instances; Bind mutates them live.
-   private static readonly Dictionary<string, SearchUtil.BuildingDefCache> privateDefCaches = new(
-      System.StringComparer.Ordinal
-   );
-
-   private SearchUtil.BuildingDefCache cachedDefCache;
-   private SearchUtil.MatchCache cachedSubMatchCache;
-   private bool subMatchResolved;
-
-   private (string Query, int Score)? memo;
-
-   [PerformanceSensitive("scope-search-hot-path")]
-   public int Score(string canonicalQueryUpper)
-   {
-      if (memo is { Query: var q, Score: var s } && q == canonicalQueryUpper)
-         return s;
-      var fresh = score(canonicalQueryUpper);
-      memo = (canonicalQueryUpper, fresh);
-      return fresh;
-   }
-
-   [PerformanceSensitive("scope-search-hot-path")]
-   public int score(string canonicalQueryUpper)
-   {
-      var defCache = ResolveDefCache();
-      defCache.Bind(canonicalQueryUpper);
-      int s = defCache.Score;
-
-      var subMatch = ResolveSubMatchCache();
-      if (subMatch != null)
-      {
-         subMatch.Bind(canonicalQueryUpper);
-         if (subMatch.Score > s)
-            s = subMatch.Score;
-      }
-      return s;
-   }
-
-   private SearchUtil.BuildingDefCache ResolveDefCache()
-   {
-      if (cachedDefCache != null)
-         return cachedDefCache;
-      if (!privateDefCaches.TryGetValue(def.PrefabID, out var c) || c == null)
-      {
-         c = SearchUtil.MakeBuildingDefCache(def);
-         privateDefCaches[def.PrefabID] = c;
-      }
-      return cachedDefCache = c;
-   }
-
-   // Bind only the title's `MatchCache` (`SubcategoryCache.Bind` recursively
-   // rebinds every nested `BuildingDefCache`)
-   private SearchUtil.MatchCache ResolveSubMatchCache()
-   {
-      if (subMatchResolved)
-         return cachedSubMatchCache;
-      subMatchResolved = true;
-      if (!string.IsNullOrEmpty(subcategoryTitle) && subcategoryTitle != "default")
-         cachedSubMatchCache = new SearchUtil.MatchCache
-         {
-            text = SearchUtil.Canonicalize(subcategoryTitle),
-         };
-      return cachedSubMatchCache;
-   }
 
    public void Invoke()
    {
