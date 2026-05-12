@@ -6,14 +6,14 @@ namespace ScopeMod;
 internal sealed class PanelActionProvider : IActionProvider
 {
    // companion to the always-available "Supply-closet panel" browse action.
-   private static readonly CallbackAction ClaimBlueprintsAction = new CallbackAction(
-      displayName: "Claim new blueprints!",
+   private static readonly CallbackAction UnlockBlueprintsAction = new CallbackAction(
+      displayName: "Unlock new blueprints",
       subcategoryKey: "panels",
       subcategoryTitle: "panels",
-      mruKey: "panel:claim-blueprints",
+      mruKey: "panel:unlock-blueprints",
       invoke: () => KleiItemDropScreen.Instance?.Show(),
       sortTier: SortTier.Pinned,
-      aliases: new[] { "blueprints", "claim", "drops", "klei", "items", "unlock" }
+      aliases: new[] { "blueprints", "claim", "drops", "klei", "items" }
    );
 
    private List<CallbackAction> cached;
@@ -67,7 +67,7 @@ internal sealed class PanelActionProvider : IActionProvider
       // Pinned new-arrival action; only present when claimable (i.e.
       // basegame-UI-button isn't greyed out)
       if (KleiItemDropScreen.HasItemsToShow())
-         yield return ClaimBlueprintsAction;
+         yield return UnlockBlueprintsAction;
    }
 
    private static List<CallbackAction> BuildCache(ManagementMenu mm)
@@ -126,7 +126,7 @@ internal sealed class PanelActionProvider : IActionProvider
       );
 
       // Supply closet is Klei's always-available blueprint-browser (full
-      // inventory, dupes, outfits). Companion to the "Claim new blueprints"
+      // inventory, dupes, outfits). Companion to the "Unlock new blueprints"
       // pinned entry (corresponding to `KleiItemDropScreen`).
       list.Add(
          new CallbackAction(
