@@ -75,8 +75,11 @@
          <ExcludeAssets>runtime</ExcludeAssets>
       </PackageReference>
       <Publicize Include="Assembly-CSharp;Assembly-CSharp-firstpass" />
-      <!-- Avoid CS0229 conflicts from OnDiscover() -->
+      <!-- Avoid CS0229 conflicts; used in `BuildingActionProvider`, et al. -->
       <DoNotPublicize Include="Assembly-CSharp:DiscoveredResources.OnDiscover" />
+      <!-- Used in JumpToDuplicantAction, et al.: -->
+      <DoNotPublicize Include="Assembly-CSharp:Components+Cmps`1.OnAdd" />
+      <DoNotPublicize Include="Assembly-CSharp:Components+Cmps`1.OnRemove" />
    </ItemGroup>
 
    <ItemGroup>

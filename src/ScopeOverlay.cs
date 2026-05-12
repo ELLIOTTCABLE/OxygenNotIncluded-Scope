@@ -1394,6 +1394,7 @@ internal static class ScopeProviders
       new OverlayActionProvider(),
       new PanelActionProvider(),
       new SystemActionProvider(),
+      new DuplicantActionProvider(),
    };
 }
 
