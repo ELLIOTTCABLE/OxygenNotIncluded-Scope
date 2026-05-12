@@ -23,6 +23,11 @@ internal sealed class ScopeInputHandler : IInputHandler
       if (selected != null && selected.TryGetComponent<TMP_InputField>(out _))
          return;
 
+      // pause-menu, options, confirm-dialog open: let the event fall through
+      // to KScreenManager
+      if (ModalGate.IsBlockingModalOpen())
+         return;
+
       if (e.TryConsume(openAction))
          ScopeOverlay.Open();
    }
