@@ -82,4 +82,11 @@ internal static class ScopeUiDefaults
    public static readonly float ScrollElasticity = 0.2f;
    public static readonly float ScrollDecelerationRate = 0.02f;
    public static readonly bool ScrollInertia = true;
+
+   // Klei item-drop ("blueprints") items-available-to-unlock tint. Defaults
+   // match `RowBgNormal`; failed extraction degrades to a plain row, not
+   // invisible.
+   public static readonly Sprite KleiItemDropOnSprite = null;
+   public static readonly Color KleiItemDropOnBg = RowBgNormal;
+   public static readonly Color KleiItemDropOnBgHover = RowBgHover;
 }

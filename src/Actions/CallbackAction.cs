@@ -15,8 +15,14 @@ internal sealed class CallbackAction : IQuickAction
    private readonly SortTier sortTier;
    private readonly SearchTerm[] searchTerms;
 
+   // Resolvers let static-field actions defer sprite/color lookup until
+   // live Klei UI is up; eager `sprite` arg wins if set.
+   private readonly System.Func<Sprite> spriteResolver;
+   private readonly Sprite eagerSprite;
+   private readonly System.Func<Color?> rowBgResolver;
+   private readonly System.Func<Color?> rowBgHoverResolver;
+
    public string DisplayName { get; }
-   public Sprite Sprite { get; }
    public string SubcategoryKey { get; }
    public string SubcategoryTitle { get; }
    public bool IsCurrentlyAvailable => isAvailable == null || isAvailable();
@@ -27,27 +33,37 @@ internal sealed class CallbackAction : IQuickAction
    public IReadOnlyList<SearchTerm> SearchTerms => searchTerms;
    public int RenderStateHash => IsCurrentlyAvailable ? 1 : 0;
 
+   public Sprite Sprite => eagerSprite ?? spriteResolver?.Invoke();
+   public Color? RowBgColorOverride => rowBgResolver?.Invoke();
+   public Color? RowBgHoverColorOverride => rowBgHoverResolver?.Invoke();
+
    public CallbackAction(
       string displayName,
       string subcategoryKey,
       string subcategoryTitle,
       string mruKey,
       SysAction invoke,
-      Sprite sprite = null,
       System.Func<bool> isAvailable = null,
       SortTier sortTier = SortTier.Normal,
-      IReadOnlyList<string> aliases = null
+      IReadOnlyList<string> aliases = null,
+      Sprite sprite = null,
+      System.Func<Sprite> spriteResolver = null,
+      System.Func<Color?> rowBgResolver = null,
+      System.Func<Color?> rowBgHoverResolver = null
    )
    {
       DisplayName = displayName;
       SubcategoryKey = subcategoryKey;
       SubcategoryTitle = subcategoryTitle;
       MruKey = mruKey;
-      Sprite = sprite;
       this.invoke = invoke;
       this.isAvailable = isAvailable;
       this.sortTier = sortTier;
       this.searchTerms = BuildSearchTerms(displayName, subcategoryTitle, aliases);
+      eagerSprite = sprite;
+      this.spriteResolver = spriteResolver;
+      this.rowBgResolver = rowBgResolver;
+      this.rowBgHoverResolver = rowBgHoverResolver;
    }
 
    private static SearchTerm[] BuildSearchTerms(

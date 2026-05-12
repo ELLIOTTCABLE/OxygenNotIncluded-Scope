@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ScopeMod.UI;
 
 namespace ScopeMod;
 
@@ -12,8 +13,11 @@ internal sealed class PanelActionProvider : IActionProvider
       subcategoryTitle: "panels",
       mruKey: "panel:unlock-blueprints",
       invoke: () => KleiItemDropScreen.Instance?.Show(),
+      spriteResolver: () => OniUiTokens.KleiItemDropOnSprite,
       sortTier: SortTier.Pinned,
-      aliases: new[] { "blueprints", "claim", "drops", "klei", "items" }
+      aliases: new[] { "blueprints", "claim", "drops", "klei", "items" },
+      rowBgResolver: () => OniUiTokens.KleiItemDropOnBg,
+      rowBgHoverResolver: () => OniUiTokens.KleiItemDropOnBgHover
    );
 
    private List<CallbackAction> cached;

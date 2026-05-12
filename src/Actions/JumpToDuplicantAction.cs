@@ -37,6 +37,8 @@ internal sealed class JumpToDuplicantAction : IQuickAction
    public string MruKey => cachedMruKey;
    public IReadOnlyList<SearchTerm> SearchTerms => searchTerms;
    public int RenderStateHash => IsCurrentlyAvailable ? 1 : 0;
+   public Color? RowBgColorOverride => null;
+   public Color? RowBgHoverColorOverride => null;
 
    public void Invoke()
    {

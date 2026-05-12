@@ -16,6 +16,33 @@ namespace ScopeMod.UI;
 //
 // (Why did I decide to not just write this in F#, again?)
 //
+// Race-safety can be important, here; we're extracting values we don't know,
+// from interfaces we don't control, via unstable mechanisms:
+//
+// 1. prefab-baked reads (`states[N].color`, serialized fields, sprites) are
+//    preferable, where possible; although it's necessary to fully ensure that
+//    the correct prefab has been hydrated by the base-game somehow before we
+//    try and use it; but fallback to ...
+// 2. live mutable surfaces (`Image.color`, `isOn`). Live reads are even worse
+//    about caching whatever happened to be active at first-touch; quite likely
+//    to be racy with Klei refreshes;
+// 3. ... but neither is very helpful if *the entire section of the UI that is
+//    rendered from a particular prefab we're interested in hasn't been loaded
+//    yet.*
+//
+// e.g. for the critical/core values, we force hydration intentionally, if the
+// user hasn't: `BuildingGroupScreen` lives on `PlanScreen.buildingGroupsRoot`
+// which `PlanScreen.OnPrefabInit` deactivates; its Instance is therefore
+// null until the user opens a build category. We opt to have `Warmup`
+// force-open the first build-category to fix that.
+//
+// This isn't really a sustainable solution, though, for other values - we can't
+// flash-open *every* base-game UI to force their prefabs to load; so other
+// values (sprites especially) must be written more defensively than this. (Some
+// sort of sane fallback-behaviour should occur if the user happens to come
+// across that Scope action before having opened the correct vanilla UI to
+// hydrate the desirable icons, basically.)
+//
 // Path map (last sampled 2026-04-30):
 //   BuildingGroupScreen ("BuildingGroups")
 //     /TitleBar                               24h
@@ -26,11 +53,6 @@ namespace ScopeMod.UI;
 //     /Viewport/Contents/SubCategory/Header   16h
 //       /BarLeft (8x2) / Arrow (12x8) / Label / BarRight (flex×2)
 //   PlanScreen.allBuildingToggles[*]/BG       row visuals (web_button)
-//
-// BuildingGroupScreen lives on PlanScreen.buildingGroupsRoot which
-// PlanScreen.OnPrefabInit deactivates; its Instance is therefore null
-// until the user opens a build category. Warmup() force-opens the
-// first category to fix that.
 internal static class OniUiTokens
 {
    #region Caches
@@ -96,6 +118,10 @@ internal static class OniUiTokens
    private static float? _scrollElasticity;
    private static float? _scrollDecelerationRate;
    private static bool? _scrollInertia;
+
+   private static Sprite _kleiItemDropOnSprite;
+   private static Color? _kleiItemDropOnBg;
+   private static Color? _kleiItemDropOnBgHover;
 
    #endregion
 
@@ -281,6 +307,21 @@ internal static class OniUiTokens
       );
    public static bool ScrollInertia =>
       CacheOpt(ref _scrollInertia, Lift.ScrollInertia, ScopeUiDefaults.ScrollInertia);
+
+   public static Sprite KleiItemDropOnSprite =>
+      CacheRef(
+         ref _kleiItemDropOnSprite,
+         Lift.KleiItemDropOnSprite,
+         ScopeUiDefaults.KleiItemDropOnSprite
+      );
+   public static Color KleiItemDropOnBg =>
+      CacheOpt(ref _kleiItemDropOnBg, Lift.KleiItemDropOnBg, ScopeUiDefaults.KleiItemDropOnBg);
+   public static Color KleiItemDropOnBgHover =>
+      CacheOpt(
+         ref _kleiItemDropOnBgHover,
+         Lift.KleiItemDropOnBgHover,
+         ScopeUiDefaults.KleiItemDropOnBgHover
+      );
 
    #endregion
 
@@ -670,6 +711,25 @@ internal static class OniUiTokens
 
       public static Vector2? RowNeedsTechSize() =>
          Size(NeedTechBadge()?.transform as RectTransform);
+
+      // states[2] = MultiToggleState.On (unlocks-available tint)
+      private static ToggleState? KleiItemDropOnState()
+      {
+         var btn = TopLeftControlScreen.Instance.Live()?.kleiItemDropButton;
+         if (btn?.states == null || btn.states.Length <= 2)
+            return null;
+         return btn.states[2];
+      }
+
+      public static Sprite KleiItemDropOnSprite() => KleiItemDropOnState()?.sprite;
+
+      public static Color? KleiItemDropOnBg() => Visible(KleiItemDropOnState()?.color);
+
+      public static Color? KleiItemDropOnBgHover()
+      {
+         var s = KleiItemDropOnState();
+         return s.HasValue && s.Value.use_color_on_hover ? Visible(s.Value.color_on_hover) : null;
+      }
    }
    #endregion
 

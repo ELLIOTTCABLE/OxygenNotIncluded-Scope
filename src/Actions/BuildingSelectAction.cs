@@ -103,6 +103,8 @@ internal sealed class BuildingSelectAction : IQuickAction
       requirementsState == PlanScreen.RequirementsState.Tech ? "unresearched" : "unavailable";
    public System.Collections.Generic.IReadOnlyList<SearchTerm> SearchTerms => searchTerms;
    public int RenderStateHash => (int)requirementsState;
+   public Color? RowBgColorOverride => null;
+   public Color? RowBgHoverColorOverride => null;
    public PlanScreen.RequirementsState RequirementsState => requirementsState;
 
    [PerformanceSensitive("scope-search-hot-path")]

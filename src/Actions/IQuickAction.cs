@@ -65,4 +65,10 @@ internal interface IQuickAction
    // Exclude immutable-but-visible (name, sprite - covered by MruKey
    // identity) and mutable-but-invisible (internal bookkeeping).
    int RenderStateHash { get; }
+
+   // Per-action row-bg override (e.g. pinned claim-blueprints, matched to its
+   // vanilla button). null -> OniUiTokens defaults. Read per-render so
+   // lazy-extraction can settle.
+   Color? RowBgColorOverride { get; }
+   Color? RowBgHoverColorOverride { get; }
 }

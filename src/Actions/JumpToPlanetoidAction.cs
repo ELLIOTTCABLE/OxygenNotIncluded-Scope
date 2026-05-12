@@ -36,6 +36,8 @@ internal sealed class JumpToPlanetoidAction : IQuickAction
    public string MruKey => world != null ? "planetoid:" + world.id : null;
    public IReadOnlyList<SearchTerm> SearchTerms => searchTerms;
    public int RenderStateHash => IsCurrentlyAvailable ? 1 : 0;
+   public Color? RowBgColorOverride => null;
+   public Color? RowBgHoverColorOverride => null;
 
    public void Invoke()
    {

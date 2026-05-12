@@ -1378,6 +1378,12 @@ internal sealed class ScopeOverlay : KScreen
       [PerformanceSensitive("scope-overlay-per-frame")]
       public void SetHighlighted(bool on)
       {
+         var ovr = on ? Action.RowBgHoverColorOverride : Action.RowBgColorOverride;
+         if (ovr.HasValue)
+         {
+            background.color = ovr.Value;
+            return;
+         }
          background.color = isAvailable
             ? (on ? OniUiTokens.RowBgHover : OniUiTokens.RowBgNormal)
             : (on ? OniUiTokens.RowBgDisabledHover : OniUiTokens.RowBgDisabled);
