@@ -1393,6 +1393,7 @@ internal static class ScopeProviders
       new ToolActionProvider(),
       new OverlayActionProvider(),
       new PanelActionProvider(),
+      new SystemActionProvider(),
    };
 }
 
