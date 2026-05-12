@@ -1395,6 +1395,7 @@ internal static class ScopeProviders
       new PanelActionProvider(),
       new SystemActionProvider(),
       new DuplicantActionProvider(),
+      new PlanetoidActionProvider(),
    };
 }
 
