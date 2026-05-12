@@ -83,9 +83,20 @@ internal static class ScopeSearch
       var results = new List<RankedResult>(limit);
       if (string.IsNullOrWhiteSpace(query))
       {
-         // Empty-query path: MRU items lead, in recency order. Then fill
-         // from `actions` skipping anything we already emitted.
+         // Empty-query: Pinned > MRU > remaining; this bypasses the normal
+         // comapartor.
          var emitted = new HashSet<string>(System.StringComparer.Ordinal);
+
+         for (int i = 0; i < actions.Count && results.Count < limit; i++)
+         {
+            var a = actions[i];
+            if (!a.IsCurrentlyAvailable || a.SortTier != SortTier.Pinned)
+               continue;
+            results.Add(new RankedResult(a, int.MaxValue));
+            if (!string.IsNullOrEmpty(a.MruKey))
+               emitted.Add(a.MruKey);
+         }
+
          if (mru != null)
          {
             var mruKeys = mru.Keys;
@@ -100,6 +111,7 @@ internal static class ScopeSearch
                   !string.IsNullOrEmpty(k)
                   && !byKey.ContainsKey(k)
                   && actions[i].IsCurrentlyAvailable
+                  && !emitted.Contains(k)
                )
                {
                   byKey[k] = actions[i];
@@ -109,7 +121,7 @@ internal static class ScopeSearch
             {
                if (byKey.TryGetValue(mruKeys[i], out var act))
                {
-                  results.Add(new RankedResult(act, int.MaxValue - i));
+                  results.Add(new RankedResult(act, int.MaxValue - 1 - i));
                   emitted.Add(mruKeys[i]);
                }
             }
@@ -117,12 +129,13 @@ internal static class ScopeSearch
 
          for (int i = 0; i < actions.Count && results.Count < limit; i++)
          {
-            if (!actions[i].IsCurrentlyAvailable)
+            var a = actions[i];
+            if (!a.IsCurrentlyAvailable || a.SortTier == SortTier.Pinned)
                continue;
-            var k = actions[i].MruKey;
+            var k = a.MruKey;
             if (k != null && emitted.Contains(k))
                continue;
-            results.Add(new RankedResult(actions[i], 0));
+            results.Add(new RankedResult(a, 0));
          }
          return results;
       }
